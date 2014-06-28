@@ -38,9 +38,6 @@ set background=dark
 " Always show the statusline
 set laststatus=2
 
-" Enable fancy mode
-let g:Powerline_symbols = 'fancy'
-
 set relativenumber
 set colorcolumn=81
 set cursorline
