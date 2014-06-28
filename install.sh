@@ -9,14 +9,13 @@ git submodule update
 
 echo "Deleting the old files..."
 rm ~/.vimrc
-rm ~/.vim
+rm -rf ~/.vim
 
 echo "Symlinking files..."
 ln -s ~/mydotfiles/vimrc ~/.vimrc
-ln -s ~/mydotfiles/vim ~/.vim
+ln -s ~/mydotfiles/vim/ ~/.vim
 
 echo "Updating Submodules..."
 git submodule foreach git pull origin master --recurse-submodules
 
-echo "All done.
-
+echo "All done."
