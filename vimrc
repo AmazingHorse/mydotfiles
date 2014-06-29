@@ -33,6 +33,7 @@ let mapleader = ","
 
 "" Color Scheme
 set background=dark
+colorscheme solarized
 
 " Always show the statusline
 set laststatus=2
