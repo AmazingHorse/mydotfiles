@@ -47,8 +47,8 @@ rm ~/.vimrc
 rm -rf ~/.vim
 
 echo "Symlinking files..."
-ln -s ~/mydotfiles/vimrc ~/.vimrc
-ln -s ~/mydotfiles/vim/ ~/.vim
+ln -s `pwd`/vimrc ~/.vimrc
+ln -s `pwd`/vim/ ~/.vim
 
 echo "Updating Submodules..."
 git submodule foreach git pull origin master --recurse-submodules
