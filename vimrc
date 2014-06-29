@@ -32,7 +32,6 @@ nmap <F4> :Gcommit <CR>
 let mapleader = ","
 
 "" Color Scheme
-colorscheme gruvbox
 set background=dark
 
 " Always show the statusline
