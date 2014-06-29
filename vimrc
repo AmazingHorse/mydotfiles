@@ -32,7 +32,7 @@ nmap <F4> :Gcommit <CR>
 let mapleader = ","
 
 "" Color Scheme
-colorscheme base16-default
+colorscheme gruvbox
 set background=dark
 
 " Always show the statusline
@@ -41,3 +41,12 @@ set laststatus=2
 set relativenumber
 set colorcolumn=81
 set cursorline
+
+" Powerline stuff
+set rtp+=$HOME/.local/lib/python2.7/site-packages/powerline/bindings/vim/
+
+" Always show statusline
+set laststatus=2
+
+" Use 256 colours (Use this setting only if your terminal supports 256 colours)
+set t_Co=256
