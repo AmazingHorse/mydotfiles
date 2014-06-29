@@ -39,7 +39,7 @@ echo "Adding to bashrc..."
 echo -e 'if [ -f /usr/local/lib/python2.7/dist-packages/powerline/bindings/bash/powerline.sh ]; then
     source /usr/local/lib/python2.7/dist-packages/powerline/bindings/bash/powerline.sh
 fi' >>~/.bashrc
-echo -e 'LANG=en_US.utf8'
+echo -e 'LANG=en_US.utf8'>>~/.bashrc
 
 
 echo "Deleting the old files..."
