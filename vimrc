@@ -32,8 +32,8 @@ nmap <F4> :Gcommit <CR>
 let mapleader = ","
 
 "" Color Scheme
-set background=dark
-colorscheme solarized
+"set background=dark
+colorscheme simple256
 
 " Always show the statusline
 set laststatus=2
