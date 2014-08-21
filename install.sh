@@ -45,10 +45,20 @@ echo -e 'LANG=en_US.utf8'>>~/.bashrc
 echo "Deleting the old files..."
 rm ~/.vimrc
 rm -rf ~/.vim
+rm -rf ~/.ssh
 
 echo "Symlinking files..."
 ln -s `pwd`/vimrc ~/.vimrc
 ln -s `pwd`/vim/ ~/.vim
+ln -s `pwd`/ssh/ ~/.ssh
+
+echo "Decrypting private keys..."
+for file in ssh/*.cast5; do
+    name=${file##*/}
+    base=${name%.cast5}
+    openssl cast5-cbc -d -in "$file" -out "ssh/${base}.key"
+    chmod 600 "ssh/${base}.key"
+done
 
 echo "Updating Submodules..."
 git submodule foreach git pull origin master --recurse-submodules

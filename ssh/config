@@ -1,0 +1,11 @@
+Host behugeman
+    HostName terminal.behugeman.ca
+    Port 22
+    User bheughan
+    IdentityFile ~/.ssh/behugeman.key
+
+Host github
+    HostName github.com
+    Port 22
+    User git
+    IdentityFile ~/.ssh/github.key
