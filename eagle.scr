@@ -1,0 +1,116 @@
+# Configuration Script
+#
+# This file can be used to configure the editor windows.
+
+Assign C+D 'Delete';
+Assign C+A 'Name';
+Assign A+A 'Label';
+Assign A+V 'Value';
+Assign A+S 'Smash';
+Assign C+E 'Move';
+Assign C+G 'Group';
+Assign C+C 'Copy';
+Assign A+C 'Change';
+Assign C+X 'Undo';
+Assign C+R ratsnest;
+Assign A+R 'Route';
+Assign A+D 'Ripup';
+Assign C+V 'Paste';
+Assign A+V 'Split';
+# Part routing grid
+Assign CA+Q 'Grid mm 1 on; Grid alt mm 0.25;';
+# Trace routing grid
+Assign CA+W 'Grid mm 0.5 on; Grid alt mm 0.25;';
+Assign CA+E 'Grid mm 0.25 on; Grid alt mm 0.01;';
+
+Grid mm 1 On;
+Grid alt mm 0.25;
+
+Assign F10 'Grid inch 0.05 on; Grid alt inch 0.005;';
+Assign AF10 'Grid inch 0.1 on; Grid alt inch 0.01;';
+
+# Set APC drill list
+SET DRILL 0.508 0.7112 0.889 0.9652 1.0668 1.3208 1.5113 2.1844 3.175 3.8608 6.35 0.508;
+# Reset to smallest drill
+
+BRD:
+
+Grid mm 1 On;
+Grid alt mm 0.25;
+
+#Menu Add Change Copy Delete Display Grid Group Move Name Quit Rect \
+#     Route Script Show Signal Split Text Value Via Window ';'  Wire Write Edit;
+
+#Get rid of the extra internal layers
+#Layer -2 -5 -6 -7 -8 -9 -10 -11 -12 -13 -14 -15
+
+Set WIRE_BEND 1; #Route with 45 degree angles
+Change Shape Round; #Make vias round
+Change Width 0.25; #Routing width default to 0.25mm
+
+Change Font Vector; #Make text on board in vector font
+Change Ratio 15;
+
+#Layer colors
+Set palette 16 0x00000000; #Super white
+Set palette 24 0xFFC0C0C0; #Grey - color used when text is selected (anti palette location 16)
+Set color_layer 21 15; #Set tPlace to white
+Set color_layer 1 2; #Set Top to Ecologix green
+Set color_layer 16 1; #Set Top to Ecologix green
+Set color_layer 22 14; #Set bPlace to yellow
+Set color_layer 51 6; #Set tDocu to mellow yellow
+display none; display 1 16 17 18 19 20 21 22 23 24 25 39 40 41 42 43 44 45 51; display -26 -27 -28;
+
+Set Option.AutoSetRouteWidthAndDrill off
+
+# Enumerate net classes
+Class 1 1A/LV 0.25 0.25 0.508;
+Class 2 2A/LV 0.6 0.25 0.7112;
+Class 3 4A/LV 1.4 0.25 0.889;
+Class 4 6A/LV 2 0.25 0.889;
+Class 5 6A/24VAC 2 0.6 0.889;
+Class 6 8A/LV 4 0.25 1.0668;
+Class 0 0.5A/LV 0.25 0.25 0.508;
+
+SCH:
+
+Assign A+Q 'Net';
+Assign AF9 'Label';
+Grid inch 0.1 on;
+Grid alt inch 0.05;
+Change Width 0.006;
+
+#Menu Add Bus Change Copy Delete Display Gateswap Grid Group Invoke Junction \
+#     Label Move Name Net Pinswap Quit Script Show Split Value Window ';' \
+#     Wire Write Edit;
+
+LBR:
+
+#Menu Close Export Open Script Write ';' Edit;
+
+Grid inch 0.1 on;
+Grid alt inch 0.05;
+
+DEV:
+
+Grid inch 0.1 on;
+Grid alt inch 0.05;
+#Menu Add Change Copy Connect Delete Display Export Grid Move Name Package \
+#     Prefix Quit Script Show Value Window ';' Write Edit;
+
+SYM:
+
+Grid inch 0.1 on;
+Grid alt inch 0.05;
+Change Width 0.010;
+#Menu Arc Change Copy Cut Delete Display Export Grid Group Move Name Paste \
+#     Pin Quit Script Show Split Text Value Window ';' Wire Write Edit;
+
+PAC:
+
+Grid mm 1 On;
+Grid alt mm 0.1;
+Change Width 0.25;
+Change Size 2;
+#Menu Add Change Copy Delete Display Grid Group Move Name Pad Quit \
+#     Script Show Smd Split Text Window ';' Wire Write Edit;
