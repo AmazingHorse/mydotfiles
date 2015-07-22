@@ -3,6 +3,8 @@ Bill Heughan's dotfiles
 
 Location of all my linux config dotfiles.
 
+Windows too, but without the nice script.
+
 If you'd like to use this for yourself, you will need to:
 - fork this
 - remove my encrypted keys
@@ -18,6 +20,7 @@ openssl cast5-cbc -e -in (YOUR_KEY) -out (YOUR_KEY).cast5
 
 - add eagle script to symlink on install script
 - decrypting keys asks for a password per key, can this be changed?
+- add symlinking of sublime text settings files
 
 Assumptions
 -----------
@@ -29,6 +32,7 @@ Includes
 - eagle.scr
 - ssh and encrypted private keys
 - install script
+- sublime text settings
 
 Does not include
 ----------------
