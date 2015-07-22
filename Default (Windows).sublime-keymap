@@ -1,0 +1,5 @@
+[
+	{ "keys": ["ctrl+alt+c"], "command": "show_panel", "args": {"panel": "console", "toggle": true} },
+	//{ "keys": ["tab"], "command": "insert", "args": {"characters": "\t"} },
+    { "keys": ["ctrl+alt+1"], "command": "run_macro_file", "args": {"file": "res://Packages/User/bold.sublime-macro"}}
+]
