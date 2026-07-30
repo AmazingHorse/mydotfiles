@@ -1,9 +1,67 @@
 {{ if eq .chezmoi.os "windows" -}}
-# Install shell dependencies and wire PowerShell 7 to the managed profile.
+# Install pinned shell dependencies and wire PowerShell 7 to the managed profile.
 
 $ErrorActionPreference = 'Stop'
 
-function Ensure-WingetPackage {
+$PinnedOhMyPoshVersion = '{{ .packages.oh_my_posh }}'
+
+function Get-OhMyPoshInstalledVersion {
+    $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
+    if (-not $OhMyPoshCommand) {
+        return $null
+    }
+
+    try {
+        $VersionOutput = & $OhMyPoshCommand.Source version 2>$null | Select-Object -First 1
+        return $VersionOutput.Trim()
+    } catch {
+        return $null
+    }
+}
+
+function Ensure-PinnedOhMyPosh {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PinnedVersion
+    )
+
+    $InstalledVersion = Get-OhMyPoshInstalledVersion
+    if ($InstalledVersion -eq $PinnedVersion) {
+        Write-Host "Oh My Posh already at pinned version $PinnedVersion"
+        return
+    }
+
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        throw "winget is required to install Oh My Posh $PinnedVersion"
+    }
+
+    if ($InstalledVersion) {
+        Write-Host "Replacing Oh My Posh $InstalledVersion with pinned $PinnedVersion"
+    } else {
+        Write-Host "Installing pinned Oh My Posh $PinnedVersion"
+    }
+
+    winget install `
+        --id JanDeDobbeleer.OhMyPosh `
+        --exact `
+        --version $PinnedVersion `
+        --scope user `
+        --force `
+        --silent `
+        --accept-package-agreements `
+        --accept-source-agreements `
+        --source winget
+
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+        [System.Environment]::GetEnvironmentVariable('Path', 'User')
+
+    $InstalledVersion = Get-OhMyPoshInstalledVersion
+    if ($InstalledVersion -ne $PinnedVersion) {
+        throw "Oh My Posh install finished, but version is '$InstalledVersion' (expected '$PinnedVersion')"
+    }
+}
+
+function Ensure-WingetPackagePresent {
     param(
         [Parameter(Mandatory = $true)]
         [string]$PackageId
@@ -16,14 +74,21 @@ function Ensure-WingetPackage {
     }
 
     Write-Host "Installing: $PackageId"
-    winget install --id $PackageId --exact --accept-package-agreements --accept-source-agreements
+    winget install `
+        --id $PackageId `
+        --exact `
+        --silent `
+        --accept-package-agreements `
+        --accept-source-agreements `
+        --source winget
 }
 
+Ensure-PinnedOhMyPosh -PinnedVersion $PinnedOhMyPoshVersion
+
 if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Ensure-WingetPackage -PackageId 'JanDeDobbeleer.OhMyPosh'
-    Ensure-WingetPackage -PackageId 'GitHub.cli'
+    Ensure-WingetPackagePresent -PackageId 'GitHub.cli'
 } else {
-    Write-Warning 'winget not found; install oh-my-posh and GitHub CLI manually if needed.'
+    Write-Warning 'winget not found; install GitHub CLI manually if needed.'
 }
 
 $ProfileLoader = @'

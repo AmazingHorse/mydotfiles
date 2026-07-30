@@ -39,6 +39,17 @@ elif [ -f /usr/share/fzf/completion.bash ]; then
     . /usr/share/fzf/completion.bash
 fi
 
-if command -v oh-my-posh >/dev/null 2>&1; then
-    eval "$(oh-my-posh init bash --config "$HOME/.config/oh-my-posh/theme.omp.json")"
+expected_oh_my_posh_version_file="$HOME/.config/oh-my-posh/expected-version"
+if command -v oh-my-posh >/dev/null 2>&1 && [ -f "$expected_oh_my_posh_version_file" ]; then
+    expected_oh_my_posh_version="$(tr -d '[:space:]' < "$expected_oh_my_posh_version_file")"
+    installed_oh_my_posh_version="$(oh-my-posh version 2>/dev/null || true)"
+    if [ "$installed_oh_my_posh_version" = "$expected_oh_my_posh_version" ]; then
+        eval "$(oh-my-posh init bash --config "$HOME/.config/oh-my-posh/theme.omp.json")"
+    else
+        printf 'warning: Oh My Posh %s does not match pinned %s; run the dotfiles bootstrap.\n' \
+            "${installed_oh_my_posh_version:-unknown}" \
+            "$expected_oh_my_posh_version" >&2
+    fi
+elif command -v oh-my-posh >/dev/null 2>&1; then
+    printf 'warning: pinned Oh My Posh version file missing; run the dotfiles bootstrap.\n' >&2
 fi

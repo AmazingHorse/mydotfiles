@@ -1,0 +1,11 @@
+*.sh text eol=lf
+*.sh.tmpl text eol=lf
+dot_bashrc text eol=lf
+dot_profile text eol=lf
+dot_zshrc text eol=lf
+*.ps1 text eol=crlf
+*.ps1.tmpl text eol=crlf
+*.json text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.toml.tmpl text eol=lf

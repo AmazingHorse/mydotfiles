@@ -8,7 +8,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $RepositoryUrl = if ($env:DOTFILES_REPO_URL) { $env:DOTFILES_REPO_URL } else { 'https://github.com/AmazingHorse/mydotfiles.git' }
-$ScriptDirectory = $PSScriptRoot
+$ScriptDirectory = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$ChezmoiSourceDirectory = Join-Path $HOME '.local\share\chezmoi'
 
 function Install-ChezmoiIfMissing {
     if (Get-Command chezmoi -ErrorAction SilentlyContinue) {
@@ -19,7 +20,9 @@ function Install-ChezmoiIfMissing {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         winget install --id twpayne.chezmoi --exact --accept-package-agreements --accept-source-agreements
     } else {
-        iex "&{$(irm 'https://get.chezmoi.io/ps1')}"
+        $InstallerScript = Invoke-RestMethod -Uri 'https://get.chezmoi.io/ps1'
+        $InstallerScriptBlock = [scriptblock]::Create($InstallerScript)
+        & $InstallerScriptBlock
     }
 
     $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
@@ -27,6 +30,11 @@ function Install-ChezmoiIfMissing {
 }
 
 function Invoke-WslBootstrap {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceDirectory
+    )
+
     if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
         Write-Host 'WSL not found; skipping Linux bootstrap.'
         return
@@ -39,7 +47,7 @@ function Invoke-WslBootstrap {
     }
 
     Write-Host "Running Linux bootstrap in $UbuntuAvailable..."
-    $WslSource = & wsl.exe -d $UbuntuAvailable -e wslpath -a $ScriptDirectory
+    $WslSource = & wsl.exe -d $UbuntuAvailable -e wslpath -a $SourceDirectory
     $SshFlag = if ($Ssh) { '--ssh' } else { '' }
     & wsl.exe -d $UbuntuAvailable -e bash -lc "cd '$WslSource' && bash ./bootstrap.sh $SshFlag"
 }
@@ -49,24 +57,24 @@ Install-ChezmoiIfMissing
 if ((Test-Path -LiteralPath (Join-Path $ScriptDirectory 'dot_config')) -and (Test-Path -LiteralPath (Join-Path $ScriptDirectory '.chezmoiignore'))) {
     Write-Host "Using local checkout: $ScriptDirectory"
     & chezmoi apply --source $ScriptDirectory
-} elseif (Test-Path -LiteralPath (Join-Path $HOME '.local\share\chezmoi\.git')) {
+    $ActiveSourceDirectory = $ScriptDirectory
+} elseif (Test-Path -LiteralPath (Join-Path $ChezmoiSourceDirectory '.git')) {
     Write-Host 'Updating existing chezmoi source...'
     & chezmoi update
+    $ActiveSourceDirectory = $ChezmoiSourceDirectory
 } else {
     Write-Host "Initializing from $RepositoryUrl"
     & chezmoi init --apply $RepositoryUrl
+    $ActiveSourceDirectory = $ChezmoiSourceDirectory
 }
 
 if ($Ssh) {
-    $SetupScript = Join-Path $ScriptDirectory 'setup-ssh.ps1'
-    if (-not (Test-Path -LiteralPath $SetupScript)) {
-        $SetupScript = Join-Path $HOME '.local\share\chezmoi\setup-ssh.ps1'
-    }
+    $SetupScript = Join-Path $ActiveSourceDirectory 'setup-ssh.ps1'
     & $SetupScript
 }
 
 if (-not $SkipWsl) {
-    Invoke-WslBootstrap
+    Invoke-WslBootstrap -SourceDirectory $ActiveSourceDirectory
 }
 
 Write-Host 'Done. Open a new PowerShell window to load the managed profile.'

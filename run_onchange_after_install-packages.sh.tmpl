@@ -2,6 +2,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+pinned_oh_my_posh_version='{{ .packages.oh_my_posh }}'
+
 if ! command -v apt-get >/dev/null 2>&1; then
     echo "Skipping package install: apt-get not found." >&2
     exit 0
@@ -18,7 +20,45 @@ sudo apt-get install -y \
     zsh-autosuggestions \
     zsh-syntax-highlighting
 
-if ! command -v oh-my-posh >/dev/null 2>&1; then
-    curl -fsSL https://ohmyposh.dev/install.sh | bash -s -- -d "$HOME/.local/bin"
+install_directory="${HOME}/.local/bin"
+mkdir -p "${install_directory}"
+
+architecture="$(uname -m)"
+case "${architecture}" in
+    x86_64|amd64)
+        oh_my_posh_asset='posh-linux-amd64'
+        ;;
+    aarch64|arm64)
+        oh_my_posh_asset='posh-linux-arm64'
+        ;;
+    *)
+        echo "Unsupported architecture for pinned Oh My Posh: ${architecture}" >&2
+        exit 1
+        ;;
+esac
+
+installed_oh_my_posh_version=''
+if command -v oh-my-posh >/dev/null 2>&1; then
+    installed_oh_my_posh_version="$(oh-my-posh version 2>/dev/null || true)"
+fi
+
+if [ "${installed_oh_my_posh_version}" = "${pinned_oh_my_posh_version}" ]; then
+    echo "Oh My Posh already at pinned version ${pinned_oh_my_posh_version}"
+    exit 0
+fi
+
+download_url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v${pinned_oh_my_posh_version}/${oh_my_posh_asset}"
+target_path="${install_directory}/oh-my-posh"
+temporary_path="$(mktemp)"
+
+echo "Installing pinned Oh My Posh ${pinned_oh_my_posh_version} from ${download_url}"
+curl -fsSL "${download_url}" -o "${temporary_path}"
+chmod 755 "${temporary_path}"
+mv "${temporary_path}" "${target_path}"
+
+installed_oh_my_posh_version="$("${target_path}" version 2>/dev/null || true)"
+if [ "${installed_oh_my_posh_version}" != "${pinned_oh_my_posh_version}" ]; then
+    echo "Oh My Posh install finished, but version is '${installed_oh_my_posh_version}' (expected '${pinned_oh_my_posh_version}')" >&2
+    exit 1
 fi
 {{ end -}}

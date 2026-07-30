@@ -1,0 +1,10 @@
+# Pinned binary versions managed by bootstrap/apply scripts.
+# Bump deliberately. Shell profiles refuse mismatched installs.
+#
+# Add new pins here when introducing a third-party binary feature:
+#   1. packages.<name> = "x.y.z"
+#   2. run_onchange_* installer uses the pin
+#   3. shell/profile guard checks the pin (or expected-version file)
+
+[packages]
+oh_my_posh = "24.8.0"
