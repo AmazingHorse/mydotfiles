@@ -4,6 +4,7 @@
 $ErrorActionPreference = 'Stop'
 
 $PinnedOhMyPoshVersion = '{{ .packages.oh_my_posh }}'
+$PinnedGitVersion = '{{ .packages.git }}'
 
 function Get-OhMyPoshInstalledVersion {
     $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
@@ -17,6 +18,28 @@ function Get-OhMyPoshInstalledVersion {
     } catch {
         return $null
     }
+}
+
+function Get-GitInstalledSemVer {
+    $GitCommand = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $GitCommand) {
+        return $null
+    }
+
+    try {
+        $VersionOutput = & $GitCommand.Source version 2>$null | Select-Object -First 1
+        if ($VersionOutput -match 'git version (\d+\.\d+\.\d+)') {
+            return $Matches[1]
+        }
+        return $null
+    } catch {
+        return $null
+    }
+}
+
+function Refresh-ProcessPathFromMachineAndUser {
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+        [System.Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
 function Ensure-PinnedOhMyPosh {
@@ -52,12 +75,53 @@ function Ensure-PinnedOhMyPosh {
         --accept-source-agreements `
         --source winget
 
-    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
-        [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    Refresh-ProcessPathFromMachineAndUser
 
     $InstalledVersion = Get-OhMyPoshInstalledVersion
     if ($InstalledVersion -ne $PinnedVersion) {
         throw "Oh My Posh install finished, but version is '$InstalledVersion' (expected '$PinnedVersion')"
+    }
+}
+
+function Ensure-PinnedGit {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PinnedVersion
+    )
+
+    $InstalledSemVer = Get-GitInstalledSemVer
+    if ($InstalledSemVer -eq $PinnedVersion) {
+        Write-Host "Git already at pinned version $PinnedVersion"
+        return
+    }
+
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        throw "winget is required to install Git $PinnedVersion"
+    }
+
+    if ($InstalledSemVer) {
+        Write-Host "Replacing Git $InstalledSemVer with pinned $PinnedVersion"
+    } else {
+        Write-Host "Installing pinned Git $PinnedVersion"
+    }
+
+    # Git for Windows package versions are often x.y.z or x.y.z.N; pin the
+    # exact winget release that matches our semantic packages.git value.
+    winget install `
+        --id Git.Git `
+        --exact `
+        --version $PinnedVersion `
+        --force `
+        --silent `
+        --accept-package-agreements `
+        --accept-source-agreements `
+        --source winget
+
+    Refresh-ProcessPathFromMachineAndUser
+
+    $InstalledSemVer = Get-GitInstalledSemVer
+    if ($InstalledSemVer -ne $PinnedVersion) {
+        throw "Git install finished, but version is '$InstalledSemVer' (expected '$PinnedVersion')"
     }
 }
 
@@ -83,6 +147,7 @@ function Ensure-WingetPackagePresent {
         --source winget
 }
 
+Ensure-PinnedGit -PinnedVersion $PinnedGitVersion
 Ensure-PinnedOhMyPosh -PinnedVersion $PinnedOhMyPoshVersion
 
 if (Get-Command winget -ErrorAction SilentlyContinue) {

@@ -8,3 +8,6 @@
 
 [packages]
 oh_my_posh = "24.8.0"
+# Aligned across platforms: git-core PPA currently ships 2.54.0;
+# winget Git.Git also publishes that exact version.
+git = "2.54.0"

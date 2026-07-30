@@ -73,11 +73,14 @@ chezmoi diff
   local `config.d` entries can select service-, work-, or host-specific keys.
 - **Declarative first:** prefer managed files over scripts. Lifecycle scripts
   are small, idempotent, and reserved for package/profile setup.
-- **Pinned binary versions:** Oh My Posh is locked in `.chezmoidata.toml`.
-  Bootstrap installs that exact version; shells refuse mismatched installs
-  instead of evaluating broken init output. Distro packages (`zsh`, `fzf`, …)
-  stay floating because apt pins do not travel cleanly across Ubuntu/Debian
-  releases.
+- **Pinned binary versions:** Oh My Posh and Git are locked in
+  `.chezmoidata.toml`. Bootstrap installs those exact versions; shells refuse
+  mismatched Oh My Posh installs instead of evaluating broken init output.
+  Git is pinned because managed config uses modern features (`zdiff3`, etc.)
+  and distro defaults lag badly (especially Windows/WSL). Other apt packages
+  (`zsh`, `fzf`, …) stay floating because their exact pins do not travel
+  cleanly across Ubuntu/Debian releases.
+
 - **Templates only for real differences:** OS and host templates will be added
   when behavior actually differs, rather than speculatively.
 - **No `just` dependency yet:** chezmoi already owns apply/update lifecycle
@@ -102,8 +105,13 @@ bootstrap style.
    config, password-manager agents later).
 6. **Document the bump path** in this README when a new pin is introduced.
 
-To bump Oh My Posh later, change `packages.oh_my_posh` in `.chezmoidata.toml`
-and re-run bootstrap/`chezmoi apply`.
+To bump pins later, change values under `[packages]` in `.chezmoidata.toml`
+and re-run bootstrap/`chezmoi apply`:
+
+- `packages.oh_my_posh` — GitHub release / winget exact version
+- `packages.git` — semantic `x.y.z`; Windows uses winget `Git.Git`, Linux uses
+  the [git-core PPA](https://launchpad.net/~git-core/+archive/ubuntu/ppa).
+  Keep this at a version both channels publish (PPA often lags Git for Windows).
 
 ### Sensible next features (same pattern)
 
@@ -113,6 +121,7 @@ Candidates that fit best-practice dotfiles without exploding scope:
 - `direnv` or `mise` with a pinned binary
 - fuzzy helpers layered on existing `fzf` (no Oh My Zsh)
 - password-manager SSH agent as an optional IdentityAgent template
+
 
 Skip for now unless needed: full plugin frameworks, package sprawl, encrypted
 private keys in-repo, and per-host secret sync.
@@ -127,7 +136,7 @@ Managed defaults include:
 - `main` for new repositories
 - automatic upstream setup on first push
 - pruning deleted remote branches
-- `diff3` conflict context (compatible with the currently installed Git)
+- `zdiff3` conflict context (requires the pinned Git ≥ 2.35)
 - histogram diffs, moved-line coloring, verbose commits, and rerere
 - a small global ignore file at `~/.config/git/ignore`
 

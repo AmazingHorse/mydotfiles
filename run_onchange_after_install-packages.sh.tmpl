@@ -3,6 +3,7 @@
 set -euo pipefail
 
 pinned_oh_my_posh_version='{{ .packages.oh_my_posh }}'
+pinned_git_version='{{ .packages.git }}'
 
 if ! command -v apt-get >/dev/null 2>&1; then
     echo "Skipping package install: apt-get not found." >&2
@@ -11,54 +12,107 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
+get_git_installed_semver() {
+    if ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local version_output
+    version_output="$(git version 2>/dev/null || true)"
+    if [[ "${version_output}" =~ git\ version\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
+    fi
+}
+
+ensure_git_core_ppa() {
+    if apt-cache policy git 2>/dev/null | grep -q 'ppa.launchpadcontent.net/git-core/ppa\|ppa.launchpad.net/git-core/ppa'; then
+        return 0
+    fi
+
+    if ! command -v add-apt-repository >/dev/null 2>&1; then
+        sudo apt-get install -y software-properties-common
+    fi
+
+    echo "Adding git-core PPA for pinned Git ${pinned_git_version}"
+    sudo add-apt-repository -y ppa:git-core/ppa
+}
+
+ensure_pinned_git() {
+    local installed_semver
+    installed_semver="$(get_git_installed_semver)"
+    if [ "${installed_semver}" = "${pinned_git_version}" ]; then
+        echo "Git already at pinned version ${pinned_git_version}"
+        return 0
+    fi
+
+    ensure_git_core_ppa
+    sudo apt-get update
+    sudo apt-get install -y "git"
+
+    installed_semver="$(get_git_installed_semver)"
+    if [ "${installed_semver}" != "${pinned_git_version}" ]; then
+        echo "Git install finished, but version is '${installed_semver:-unknown}' (expected '${pinned_git_version}')." >&2
+        echo "git-core PPA may not have published ${pinned_git_version} for this Ubuntu release yet." >&2
+        exit 1
+    fi
+}
+
+ensure_pinned_oh_my_posh() {
+    local install_directory="${HOME}/.local/bin"
+    mkdir -p "${install_directory}"
+
+    local architecture
+    architecture="$(uname -m)"
+    local oh_my_posh_asset
+    case "${architecture}" in
+        x86_64|amd64)
+            oh_my_posh_asset='posh-linux-amd64'
+            ;;
+        aarch64|arm64)
+            oh_my_posh_asset='posh-linux-arm64'
+            ;;
+        *)
+            echo "Unsupported architecture for pinned Oh My Posh: ${architecture}" >&2
+            exit 1
+            ;;
+    esac
+
+    local installed_oh_my_posh_version=''
+    if command -v oh-my-posh >/dev/null 2>&1; then
+        installed_oh_my_posh_version="$(oh-my-posh version 2>/dev/null || true)"
+    fi
+
+    if [ "${installed_oh_my_posh_version}" = "${pinned_oh_my_posh_version}" ]; then
+        echo "Oh My Posh already at pinned version ${pinned_oh_my_posh_version}"
+        return 0
+    fi
+
+    local download_url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v${pinned_oh_my_posh_version}/${oh_my_posh_asset}"
+    local target_path="${install_directory}/oh-my-posh"
+    local temporary_path
+    temporary_path="$(mktemp)"
+
+    echo "Installing pinned Oh My Posh ${pinned_oh_my_posh_version} from ${download_url}"
+    curl -fsSL "${download_url}" -o "${temporary_path}"
+    chmod 755 "${temporary_path}"
+    mv "${temporary_path}" "${target_path}"
+
+    installed_oh_my_posh_version="$("${target_path}" version 2>/dev/null || true)"
+    if [ "${installed_oh_my_posh_version}" != "${pinned_oh_my_posh_version}" ]; then
+        echo "Oh My Posh install finished, but version is '${installed_oh_my_posh_version}' (expected '${pinned_oh_my_posh_version}')" >&2
+        exit 1
+    fi
+}
+
 sudo apt-get update
 sudo apt-get install -y \
     curl \
     fzf \
-    git \
+    software-properties-common \
     zsh \
     zsh-autosuggestions \
     zsh-syntax-highlighting
 
-install_directory="${HOME}/.local/bin"
-mkdir -p "${install_directory}"
-
-architecture="$(uname -m)"
-case "${architecture}" in
-    x86_64|amd64)
-        oh_my_posh_asset='posh-linux-amd64'
-        ;;
-    aarch64|arm64)
-        oh_my_posh_asset='posh-linux-arm64'
-        ;;
-    *)
-        echo "Unsupported architecture for pinned Oh My Posh: ${architecture}" >&2
-        exit 1
-        ;;
-esac
-
-installed_oh_my_posh_version=''
-if command -v oh-my-posh >/dev/null 2>&1; then
-    installed_oh_my_posh_version="$(oh-my-posh version 2>/dev/null || true)"
-fi
-
-if [ "${installed_oh_my_posh_version}" = "${pinned_oh_my_posh_version}" ]; then
-    echo "Oh My Posh already at pinned version ${pinned_oh_my_posh_version}"
-    exit 0
-fi
-
-download_url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v${pinned_oh_my_posh_version}/${oh_my_posh_asset}"
-target_path="${install_directory}/oh-my-posh"
-temporary_path="$(mktemp)"
-
-echo "Installing pinned Oh My Posh ${pinned_oh_my_posh_version} from ${download_url}"
-curl -fsSL "${download_url}" -o "${temporary_path}"
-chmod 755 "${temporary_path}"
-mv "${temporary_path}" "${target_path}"
-
-installed_oh_my_posh_version="$("${target_path}" version 2>/dev/null || true)"
-if [ "${installed_oh_my_posh_version}" != "${pinned_oh_my_posh_version}" ]; then
-    echo "Oh My Posh install finished, but version is '${installed_oh_my_posh_version}' (expected '${pinned_oh_my_posh_version}')" >&2
-    exit 1
-fi
+ensure_pinned_git
+ensure_pinned_oh_my_posh
 {{ end -}}
