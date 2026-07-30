@@ -1,0 +1,49 @@
+{{ if eq .chezmoi.os "windows" -}}
+@echo off
+setlocal EnableExtensions
+
+where cursor >nul 2>&1
+if %ERRORLEVEL%==0 (
+  cursor --wait %*
+  exit /b %ERRORLEVEL%
+)
+
+where antigravity >nul 2>&1
+if %ERRORLEVEL%==0 (
+  antigravity --wait %*
+  exit /b %ERRORLEVEL%
+)
+
+where agy >nul 2>&1
+if %ERRORLEVEL%==0 (
+  agy --wait %*
+  exit /b %ERRORLEVEL%
+)
+
+where code >nul 2>&1
+if %ERRORLEVEL%==0 (
+  code --wait %*
+  exit /b %ERRORLEVEL%
+)
+
+where nvim >nul 2>&1
+if %ERRORLEVEL%==0 (
+  nvim %*
+  exit /b %ERRORLEVEL%
+)
+
+where vim >nul 2>&1
+if %ERRORLEVEL%==0 (
+  vim %*
+  exit /b %ERRORLEVEL%
+)
+
+where vi >nul 2>&1
+if %ERRORLEVEL%==0 (
+  vi %*
+  exit /b %ERRORLEVEL%
+)
+
+echo preferred-editor: no supported editor found on PATH 1>&2
+exit /b 1
+{{ end -}}

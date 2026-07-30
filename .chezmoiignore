@@ -11,3 +11,10 @@ bin/
 *.bundle
 .DS_Store
 Thumbs.db
+
+{{- if ne .chezmoi.os "windows" }}
+.local/bin/preferred-editor.cmd
+{{- end }}
+{{- if eq .chezmoi.os "windows" }}
+.local/bin/preferred-editor
+{{- end }}

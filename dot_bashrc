@@ -13,6 +13,11 @@ shopt -s checkwinsize
 
 export PATH="$HOME/.local/bin:$PATH"
 
+if [ -f "$HOME/.config/shell/helpers.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$HOME/.config/shell/helpers.sh"
+fi
+
 if [ -x /usr/bin/dircolors ]; then
     eval "$(dircolors -b)"
     alias ls='ls --color=auto'

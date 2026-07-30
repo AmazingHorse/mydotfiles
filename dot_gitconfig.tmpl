@@ -4,9 +4,9 @@
 
 [core]
 {{- if eq .chezmoi.os "windows" }}
-    editor = cursor --wait
+    editor = preferred-editor.cmd
 {{- else }}
-    editor = vi
+    editor = preferred-editor
 {{- end }}
     excludesFile = ~/.config/git/ignore
 
@@ -23,7 +23,6 @@
 [merge]
     conflictStyle = zdiff3
 
-
 [diff]
     algorithm = histogram
     colorMoved = default
@@ -33,6 +32,16 @@
 
 [rerere]
     enabled = true
+
+[alias]
+    st = status
+    co = checkout
+    sw = switch
+    br = branch
+    ci = commit
+    last = log -1 HEAD
+    lg = log --oneline --decorate --graph -20
+    amend = commit --amend --no-edit
 
 [include]
     path = ~/.gitconfig.local

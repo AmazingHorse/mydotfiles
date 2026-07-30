@@ -1,5 +1,87 @@
 # Managed PowerShell 7 profile. Windows $PROFILE should dot-source this file.
 
+$LocalBinDirectory = Join-Path $HOME '.local\bin'
+if (Test-Path -LiteralPath $LocalBinDirectory) {
+    if (-not (($env:Path -split ';') -contains $LocalBinDirectory)) {
+        $env:Path = "$LocalBinDirectory;$env:Path"
+    }
+}
+
+function Resolve-PreferredEditorCommand {
+    $WaitCapableEditors = @(
+        @{ Name = 'cursor'; Arguments = @('--wait') }
+        @{ Name = 'antigravity'; Arguments = @('--wait') }
+        @{ Name = 'agy'; Arguments = @('--wait') }
+        @{ Name = 'code'; Arguments = @('--wait') }
+    )
+    foreach ($EditorCandidate in $WaitCapableEditors) {
+        if (Get-Command $EditorCandidate.Name -ErrorAction SilentlyContinue) {
+            return $EditorCandidate
+        }
+    }
+
+    foreach ($TerminalEditorName in @('nvim', 'vim', 'vi')) {
+        if (Get-Command $TerminalEditorName -ErrorAction SilentlyContinue) {
+            return @{ Name = $TerminalEditorName; Arguments = @() }
+        }
+    }
+
+    return $null
+}
+
+$PreferredEditor = Resolve-PreferredEditorCommand
+if ($PreferredEditor) {
+    $EditorInvocation = $PreferredEditor.Name
+    if ($PreferredEditor.Arguments.Count -gt 0) {
+        $EditorInvocation = "$($PreferredEditor.Name) $($PreferredEditor.Arguments -join ' ')"
+    }
+    $env:EDITOR = $EditorInvocation
+    $env:VISUAL = $EditorInvocation
+}
+
+if (-not $env:PAGER) {
+    $env:PAGER = 'less -FRX'
+}
+
+function Invoke-GitFuzzySwitch {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('switch', 'checkout')]
+        [string]$GitCommand
+    )
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Warning 'git not found'
+        return
+    }
+
+    if (-not (Get-Command fzf -ErrorAction SilentlyContinue)) {
+        Write-Warning 'fzf not found'
+        return
+    }
+
+    git rev-parse --is-inside-work-tree 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning 'not a git repository'
+        return
+    }
+
+    $SelectedBranch = git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>$null |
+        ForEach-Object { $_ -replace '^origin/', '' } |
+        Where-Object { $_ } |
+        Select-Object -Unique |
+        fzf --height=40% --reverse --prompt="${GitCommand}> "
+
+    if (-not $SelectedBranch) {
+        return
+    }
+
+    & git $GitCommand $SelectedBranch
+}
+
+function gsw { Invoke-GitFuzzySwitch -GitCommand switch }
+function gco { Invoke-GitFuzzySwitch -GitCommand checkout }
+
 $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
 if (-not $OhMyPoshCommand) {
     Write-Warning 'Oh My Posh is not installed. Run the dotfiles bootstrap to install it.'

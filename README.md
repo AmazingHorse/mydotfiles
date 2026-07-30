@@ -59,8 +59,9 @@ chezmoi diff
 ## What this manages
 
 - Oh My Posh theme + PowerShell 7 profile loader
-- zsh + bash startup files
-- portable Git defaults with machine-local identity
+- zsh + bash startup files + shared shell helpers
+- preferred editor picker (Cursor → Antigravity → VS Code → nvim/vim/vi)
+- portable Git defaults, aliases, and machine-local identity
 - shared `~/.ssh/config` (no private keys)
 - package bootstrap for prompt/shell dependencies
 
@@ -115,13 +116,15 @@ and re-run bootstrap/`chezmoi apply`:
 
 ### Sensible next features (same pattern)
 
-Candidates that fit best-practice dotfiles without exploding scope:
+Already shipped in-shell: preferred editor chain, `PAGER`, Git aliases
+(`st`/`co`/`sw`/`br`/`ci`/`last`/`lg`/`amend`), and soft-fail fzf helpers
+(`gsw` / `gco`).
 
-- editor/`EDITOR` + basic pager/history consistency
+Still good candidates later:
+
 - `direnv` or `mise` with a pinned binary
-- fuzzy helpers layered on existing `fzf` (no Oh My Zsh)
 - password-manager SSH agent as an optional IdentityAgent template
-
+- richer fuzzy helpers (repo jump, stash pick) without a plugin framework
 
 Skip for now unless needed: full plugin frameworks, package sprawl, encrypted
 private keys in-repo, and per-host secret sync.
@@ -138,7 +141,43 @@ Managed defaults include:
 - pruning deleted remote branches
 - `zdiff3` conflict context (requires the pinned Git ≥ 2.35)
 - histogram diffs, moved-line coloring, verbose commits, and rerere
+- short aliases: `st`, `co`, `sw`, `br`, `ci`, `last`, `lg`, `amend`
+- `core.editor` via `preferred-editor` (same picker as `$EDITOR`)
 - a small global ignore file at `~/.config/git/ignore`
+
+Shell helpers (soft-fail if tools are missing):
+
+- `$EDITOR` / `$VISUAL` from `preferred-editor`: Cursor → Antigravity (`antigravity` / `agy`) → VS Code (`code`) → `nvim` / `vim` / `vi`
+- `gsw` / `gco`: fuzzy branch switch/checkout via `fzf`
+
+### Shell cheat sheet
+
+Git aliases (use as `git <alias>`):
+
+- `git st` → `git status`
+- `git co` → `git checkout`
+- `git sw` → `git switch`
+- `git br` → `git branch`
+- `git ci` → `git commit`
+- `git last` → show the latest commit
+- `git lg` → compact decorated graph of the latest 20 commits
+- `git amend` → amend the latest commit without changing its message
+
+Fuzzy helpers (run directly inside a repository):
+
+- `gsw` → select a local/remote branch with `fzf`, then `git switch`
+- `gco` → select a local/remote branch with `fzf`, then `git checkout`
+
+Linux/WSL zsh and bash key bindings supplied by the distro `fzf` scripts:
+
+- `Ctrl-R` → fuzzy-search shell history
+- `Ctrl-T` → fuzzy-select a file and insert its path at the prompt
+- `Alt-C` → fuzzy-select a directory and change into it
+- Inside an `fzf` picker: type to filter, use arrows or `Ctrl-J`/`Ctrl-K`,
+  press `Enter` to choose, or `Esc`/`Ctrl-C` to cancel
+
+PowerShell supports `gsw` / `gco`; the `Ctrl-R`, `Ctrl-T`, and `Alt-C` bindings
+above are currently Linux/WSL-only.
 
 Machine-specific overrides belong in unmanaged `~/.gitconfig.local`, which is
 included last. Credentials, signing keys, and forced pull/rebase policy are
