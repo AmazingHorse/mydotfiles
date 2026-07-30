@@ -77,6 +77,7 @@ bash ./scripts/ci-check.sh
 - Oh My Posh theme + PowerShell 7 profile loader
 - zsh + bash startup files + shared shell helpers
 - preferred editor picker (Cursor → Antigravity → VS Code → nvim/vim/vi)
+- Everforest Dark terminal/prompt colors and a gentle audible terminal bell
 - portable Git defaults, aliases, and machine-local identity
 - shared `~/.ssh/config` (no private keys)
 - package bootstrap for prompt/shell dependencies

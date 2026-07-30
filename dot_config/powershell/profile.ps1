@@ -40,7 +40,42 @@ if ($PreferredEditor) {
 }
 
 if (-not $env:PAGER) {
-    $env:PAGER = 'less -FRX'
+    if (Get-Command less -ErrorAction SilentlyContinue) {
+        $env:PAGER = 'less'
+        if (-not $env:LESS) {
+            $env:LESS = '-FRX'
+        }
+    } else {
+        $env:PAGER = 'more.com'
+    }
+}
+
+$PSReadLineCommand = Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue
+if ($PSReadLineCommand) {
+    Set-PSReadLineOption -BellStyle Audible -DingTone 660 -DingDuration 30
+    Set-PSReadLineKeyHandler -Key Backspace -ScriptBlock {
+        param($Key, $Argument)
+
+        $CurrentLine = $null
+        $CursorPosition = 0
+        $SelectionStart = -1
+        $SelectionLength = 0
+        [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState(
+            [ref]$CurrentLine,
+            [ref]$CursorPosition
+        )
+        [Microsoft.PowerShell.PSConsoleReadLine]::GetSelectionState(
+            [ref]$SelectionStart,
+            [ref]$SelectionLength
+        )
+
+        if ($CursorPosition -gt 0 -or $SelectionLength -gt 0) {
+            [Microsoft.PowerShell.PSConsoleReadLine]::BackwardDeleteChar($Key, $Argument)
+            return
+        }
+
+        [Console]::Write("`a")
+    }
 }
 
 function Invoke-GitFuzzySwitch {

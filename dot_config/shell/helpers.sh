@@ -10,7 +10,8 @@ elif [ -z "${EDITOR:-}" ]; then
     export VISUAL="vi"
 fi
 
-export PAGER="${PAGER:-less -FRX}"
+export PAGER="${PAGER:-less}"
+export LESS="${LESS:--FRX}"
 
 git_fuzzy_branch() {
     local git_command="$1"

@@ -1,0 +1,137 @@
+{{ if eq .chezmoi.os "windows" -}}
+$ErrorActionPreference = 'Stop'
+
+function Write-GentleTerminalBell {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $SampleRate = 44100
+    $DurationSeconds = 0.16
+    $PeakAmplitude = 0.06
+    $SampleCount = [int]($SampleRate * $DurationSeconds)
+    $BytesPerSample = 2
+    $AudioDataSize = $SampleCount * $BytesPerSample
+
+    $ParentDirectory = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $ParentDirectory)) {
+        New-Item -ItemType Directory -Force -Path $ParentDirectory | Out-Null
+    }
+
+    $FileStream = [System.IO.File]::Create($Path)
+    $BinaryWriter = [System.IO.BinaryWriter]::new($FileStream)
+    try {
+        $BinaryWriter.Write([System.Text.Encoding]::ASCII.GetBytes('RIFF'))
+        $BinaryWriter.Write([int](36 + $AudioDataSize))
+        $BinaryWriter.Write([System.Text.Encoding]::ASCII.GetBytes('WAVE'))
+        $BinaryWriter.Write([System.Text.Encoding]::ASCII.GetBytes('fmt '))
+        $BinaryWriter.Write([int]16)
+        $BinaryWriter.Write([int16]1)
+        $BinaryWriter.Write([int16]1)
+        $BinaryWriter.Write([int]$SampleRate)
+        $BinaryWriter.Write([int]($SampleRate * $BytesPerSample))
+        $BinaryWriter.Write([int16]$BytesPerSample)
+        $BinaryWriter.Write([int16]16)
+        $BinaryWriter.Write([System.Text.Encoding]::ASCII.GetBytes('data'))
+        $BinaryWriter.Write([int]$AudioDataSize)
+
+        for ($SampleIndex = 0; $SampleIndex -lt $SampleCount; $SampleIndex++) {
+            $ElapsedSeconds = $SampleIndex / $SampleRate
+            $Progress = $SampleIndex / $SampleCount
+            $AttackEnvelope = [Math]::Min(1.0, $ElapsedSeconds / 0.008)
+            $ReleaseEnvelope = [Math]::Pow(1.0 - $Progress, 2)
+            $Envelope = $AttackEnvelope * $ReleaseEnvelope
+            $FundamentalTone = [Math]::Sin(2 * [Math]::PI * 523.25 * $ElapsedSeconds)
+            $HarmonyTone = [Math]::Sin(2 * [Math]::PI * 659.25 * $ElapsedSeconds)
+            $MixedTone = (0.72 * $FundamentalTone) + (0.28 * $HarmonyTone)
+            $SampleValue = [int16](
+                [Math]::Round([int16]::MaxValue * $PeakAmplitude * $Envelope * $MixedTone)
+            )
+            $BinaryWriter.Write($SampleValue)
+        }
+    } finally {
+        $BinaryWriter.Dispose()
+        $FileStream.Dispose()
+    }
+}
+
+function Set-WindowsTerminalAppearance {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SettingsPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BellSoundPath
+    )
+
+    if (-not (Test-Path -LiteralPath $SettingsPath)) {
+        return
+    }
+
+    $Settings = Get-Content -LiteralPath $SettingsPath -Raw | ConvertFrom-Json
+    if (-not $Settings.profiles.defaults) {
+        $Settings.profiles.defaults = [pscustomobject]@{}
+    }
+
+    $Settings.profiles.defaults |
+        Add-Member -NotePropertyName bellStyle -NotePropertyValue 'audible' -Force
+    $Settings.profiles.defaults |
+        Add-Member -NotePropertyName bellSound -NotePropertyValue $BellSoundPath -Force
+    $Settings.profiles.defaults |
+        Add-Member -NotePropertyName colorScheme -NotePropertyValue 'Everforest Dark' -Force
+
+    $EverforestDarkScheme = [pscustomobject]@{
+        name                = 'Everforest Dark'
+        background          = '#2D353B'
+        foreground          = '#D3C6AA'
+        selectionBackground = '#475258'
+        cursorColor         = '#D3C6AA'
+        black               = '#343F44'
+        red                 = '#E67E80'
+        green               = '#A7C080'
+        yellow              = '#DBBC7F'
+        blue                = '#7FBBB3'
+        purple              = '#D699B6'
+        cyan                = '#83C092'
+        white               = '#D3C6AA'
+        brightBlack         = '#859289'
+        brightRed           = '#E67E80'
+        brightGreen         = '#A7C080'
+        brightYellow        = '#DBBC7F'
+        brightBlue          = '#7FBBB3'
+        brightPurple        = '#D699B6'
+        brightCyan          = '#83C092'
+        brightWhite         = '#FFF9E8'
+    }
+    $OtherSchemes = @(
+        $Settings.schemes |
+            Where-Object { $_.name -ne $EverforestDarkScheme.name }
+    )
+    $Settings.schemes = @($OtherSchemes) + @($EverforestDarkScheme)
+
+    $SerializedSettings = $Settings | ConvertTo-Json -Depth 100
+    [System.IO.File]::WriteAllText(
+        $SettingsPath,
+        $SerializedSettings + [Environment]::NewLine,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+}
+
+$BellSoundPath = Join-Path $HOME '.config\terminal\gentle-bell.wav'
+if (-not (Test-Path -LiteralPath $BellSoundPath)) {
+    Write-GentleTerminalBell -Path $BellSoundPath
+}
+
+$TerminalSettingsPaths = @(
+    (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json')
+    (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json')
+    (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\settings.json')
+)
+
+foreach ($TerminalSettingsPath in $TerminalSettingsPaths) {
+    Set-WindowsTerminalAppearance `
+        -SettingsPath $TerminalSettingsPath `
+        -BellSoundPath $BellSoundPath
+}
+{{ end -}}
