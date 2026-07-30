@@ -56,6 +56,22 @@ chezmoi update --apply=false
 chezmoi diff
 ```
 
+## CI
+
+GitHub Actions runs on push/PR to `master`:
+
+- shell syntax + `shellcheck`
+- chezmoi dry-run with dummy Git identity (scripts excluded)
+- key template renders
+- pinned Oh My Posh Linux asset reachability
+- PowerShell parser checks for bootstrap/profile scripts
+
+Locally (Linux/WSL):
+
+```bash
+bash ./scripts/ci-check.sh
+```
+
 ## What this manages
 
 - Oh My Posh theme + PowerShell 7 profile loader
@@ -84,10 +100,9 @@ chezmoi diff
 
 - **Templates only for real differences:** OS and host templates will be added
   when behavior actually differs, rather than speculatively.
-- **No `just` dependency yet:** chezmoi already owns apply/update lifecycle
-  scripts. A future `justfile` may provide optional contributor shortcuts such
-  as `just check` or `just apply`, but bootstrap and normal use will not require
-  it.
+- **No `just` dependency yet:** use `bash ./scripts/ci-check.sh` (and GitHub
+  Actions) for validation. A future `justfile` may wrap that, but bootstrap
+  and normal use will not require it.
 
 ### Adding a feature (required pattern)
 

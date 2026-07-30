@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Local/CI checks for template render, shell syntax, and pin reachability.
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${repository_root}"
+
+if ! command -v chezmoi >/dev/null 2>&1; then
+    echo "chezmoi is required for CI checks." >&2
+    exit 1
+fi
+
+echo "==> Shell syntax"
+bash -n bootstrap.sh
+bash -n setup-ssh.sh
+bash -n dot_local/bin/executable_preferred-editor
+bash -n dot_config/shell/helpers.sh
+
+if command -v shellcheck >/dev/null 2>&1; then
+    echo "==> shellcheck"
+    shellcheck \
+        --severity=warning \
+        bootstrap.sh \
+        setup-ssh.sh \
+        dot_local/bin/executable_preferred-editor \
+        dot_config/shell/helpers.sh
+else
+    echo "shellcheck not installed; skipping"
+fi
+
+echo "==> Chezmoi dry-run (exclude scripts)"
+config_directory="${HOME}/.config/chezmoi"
+mkdir -p "${config_directory}"
+cat > "${config_directory}/chezmoi.toml" <<'EOF'
+umask = 0o022
+
+[data]
+gitName = "CI User"
+gitEmail = "ci@example.com"
+EOF
+
+destination_directory="$(mktemp -d)"
+cleanup() {
+    rm -rf "${destination_directory}"
+}
+trap cleanup EXIT
+
+chezmoi apply \
+    --dry-run \
+    --source="${repository_root}" \
+    --destination="${destination_directory}" \
+    --exclude=scripts \
+    >/dev/null
+
+echo "==> Verify template data"
+rendered_identity="$(chezmoi execute-template '{{ .gitName }} <{{ .gitEmail }}>')"
+if [ "${rendered_identity}" != 'CI User <ci@example.com>' ]; then
+    echo "Unexpected rendered identity: ${rendered_identity}" >&2
+    exit 1
+fi
+
+# Target-state templates (including .packages from .chezmoidata.toml) are
+# already exercised by the dry-run apply above.
+
+echo "==> Verify pinned Oh My Posh release asset"
+oh_my_posh_version="$(
+    awk -F'"' '/^oh_my_posh[[:space:]]*=/ { print $2; exit }' .chezmoidata.toml
+)"
+if [ -z "${oh_my_posh_version}" ]; then
+    echo "Could not read packages.oh_my_posh from .chezmoidata.toml" >&2
+    exit 1
+fi
+
+asset_url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v${oh_my_posh_version}/posh-linux-amd64"
+http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${asset_url}")"
+case "${http_status}" in
+    200|302) ;;
+    *)
+        echo "Pinned Oh My Posh asset not reachable (${http_status}): ${asset_url}" >&2
+        exit 1
+        ;;
+esac
+
+echo "==> CI checks passed"
