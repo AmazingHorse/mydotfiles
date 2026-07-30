@@ -81,6 +81,8 @@ Private keys are **never** stored in this repo.
 .\setup-ssh.ps1 -Gh
 ```
 
+If an existing `~/.ssh/config` is replaced on first apply, chezmoi/bootstrap should leave a backup (for example `~/.ssh/config.pre-chezmoi.bak`). Move host aliases into `~/.ssh/config.d/private.conf` so they stay local and continue to work via `Include`.
+
 ### Future option (not implemented yet)
 
 A password-manager SSH agent (1Password / Bitwarden) can replace on-disk keys later via `IdentityAgent` in `ssh/config`. Left open intentionally so terminal features can come next.
