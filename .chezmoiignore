@@ -7,6 +7,7 @@ bootstrap.ps1
 bootstrap.sh
 setup-ssh.ps1
 setup-ssh.sh
+bin/
 *.bundle
 .DS_Store
 Thumbs.db
