@@ -1,0 +1,37 @@
+{{ if eq .chezmoi.os "linux" -}}
+#!/usr/bin/env bash
+set -euo pipefail
+
+ssh_directory="${HOME}/.ssh"
+ssh_config_path="${ssh_directory}/config"
+private_config_directory="${ssh_directory}/config.d"
+private_config_path="${private_config_directory}/private.conf"
+
+if [ ! -f "${ssh_config_path}" ]; then
+    exit 0
+fi
+
+if grep -Fqx 'Include config.d/*.conf' "${ssh_config_path}"; then
+    exit 0
+fi
+
+mkdir -p "${private_config_directory}"
+chmod 700 "${ssh_directory}" "${private_config_directory}"
+
+backup_path="${ssh_config_path}.pre-chezmoi.bak"
+if [ -e "${backup_path}" ]; then
+    backup_path="${backup_path}.$(date +%Y%m%d%H%M%S)"
+fi
+cp -p "${ssh_config_path}" "${backup_path}"
+chmod 600 "${backup_path}"
+
+if [ -s "${private_config_path}" ]; then
+    echo "Existing ${private_config_path} preserved; merge ${backup_path} manually." >&2
+    exit 0
+fi
+
+cp -p "${ssh_config_path}" "${private_config_path}"
+chmod 600 "${private_config_path}"
+echo "Migrated existing SSH config to ${private_config_path}"
+echo "Backup saved to ${backup_path}"
+{{ end -}}

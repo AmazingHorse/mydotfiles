@@ -52,6 +52,40 @@ chezmoi apply \
     --exclude=scripts \
     >/dev/null
 
+echo "==> Verify SSH config migration"
+rendered_migration_script="${destination_directory}/migrate-ssh-config.sh"
+chezmoi execute-template \
+    < run_once_before_migrate-ssh-config.sh.tmpl \
+    > "${rendered_migration_script}"
+bash -n "${rendered_migration_script}"
+if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck --severity=warning "${rendered_migration_script}"
+fi
+
+migration_home="${destination_directory}/migration-home"
+mkdir -p "${migration_home}/.ssh"
+cat > "${migration_home}/.ssh/config" <<'EOF'
+Host legacy-server
+    HostName legacy.example.com
+    User deploy
+    IdentityFile ~/.ssh/id_ed25519
+EOF
+printf 'private-key-sentinel\n' > "${migration_home}/.ssh/id_ed25519"
+cp "${migration_home}/.ssh/config" "${destination_directory}/original-ssh-config"
+
+HOME="${migration_home}" bash "${rendered_migration_script}" >/dev/null
+
+cmp \
+    "${destination_directory}/original-ssh-config" \
+    "${migration_home}/.ssh/config.pre-chezmoi.bak"
+cmp \
+    "${destination_directory}/original-ssh-config" \
+    "${migration_home}/.ssh/config.d/private.conf"
+if [ "$(cat "${migration_home}/.ssh/id_ed25519")" != 'private-key-sentinel' ]; then
+    echo "SSH migration modified the existing private key." >&2
+    exit 1
+fi
+
 echo "==> Verify template data"
 rendered_identity="$(chezmoi execute-template '{{ .gitName }} <{{ .gitEmail }}>')"
 if [ "${rendered_identity}" != 'CI User <ci@example.com>' ]; then

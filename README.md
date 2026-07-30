@@ -232,6 +232,10 @@ Private keys are **never** stored in this repo.
 
 - Shared config lives in `~/.ssh/config`
 - Sensitive hosts go in `~/.ssh/config.d/*.conf` (local only)
+- Portable identity paths use `~/.ssh/key-name`, never OS-specific home paths
+- On first apply, an existing unmanaged `~/.ssh/config` is copied to
+  `~/.ssh/config.d/private.conf` before the shared config is installed
+- The original is also saved as `~/.ssh/config.pre-chezmoi.bak`
 - Create a machine-local key:
 
 ```bash
@@ -244,7 +248,10 @@ Private keys are **never** stored in this repo.
 .\setup-ssh.ps1 -Gh
 ```
 
-If an existing `~/.ssh/config` is replaced on first apply, chezmoi/bootstrap should leave a backup (for example `~/.ssh/config.pre-chezmoi.bak`). Move host aliases into `~/.ssh/config.d/private.conf` so they stay local and continue to work via `Include`.
+If `~/.ssh/config.d/private.conf` already contains data, the migration preserves
+it and leaves the old config in a timestamped backup for manual merging. Existing
+private keys, public keys, `known_hosts`, and other files under `~/.ssh` are
+never replaced.
 
 ### Future option (not implemented yet)
 

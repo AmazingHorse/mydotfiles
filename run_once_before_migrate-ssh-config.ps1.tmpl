@@ -1,0 +1,38 @@
+{{ if eq .chezmoi.os "windows" -}}
+$ErrorActionPreference = 'Stop'
+
+$SshDirectory = Join-Path $HOME '.ssh'
+$SshConfigPath = Join-Path $SshDirectory 'config'
+$PrivateConfigDirectory = Join-Path $SshDirectory 'config.d'
+$PrivateConfigPath = Join-Path $PrivateConfigDirectory 'private.conf'
+
+if (-not (Test-Path -LiteralPath $SshConfigPath -PathType Leaf)) {
+    exit 0
+}
+
+$ExistingConfigLines = Get-Content -LiteralPath $SshConfigPath
+if ($ExistingConfigLines -contains 'Include config.d/*.conf') {
+    exit 0
+}
+
+New-Item -ItemType Directory -Force -Path $PrivateConfigDirectory | Out-Null
+
+$BackupPath = "${SshConfigPath}.pre-chezmoi.bak"
+if (Test-Path -LiteralPath $BackupPath) {
+    $Timestamp = Get-Date -Format 'yyyyMMddHHmmss'
+    $BackupPath = "${BackupPath}.${Timestamp}"
+}
+Copy-Item -LiteralPath $SshConfigPath -Destination $BackupPath
+
+$PrivateConfigExists = Test-Path -LiteralPath $PrivateConfigPath -PathType Leaf
+$PrivateConfigHasContent = $PrivateConfigExists -and
+    ((Get-Item -LiteralPath $PrivateConfigPath).Length -gt 0)
+if ($PrivateConfigHasContent) {
+    Write-Warning "Existing $PrivateConfigPath preserved; merge $BackupPath manually."
+    exit 0
+}
+
+Copy-Item -LiteralPath $SshConfigPath -Destination $PrivateConfigPath
+Write-Host "Migrated existing SSH config to $PrivateConfigPath"
+Write-Host "Backup saved to $BackupPath"
+{{ end -}}

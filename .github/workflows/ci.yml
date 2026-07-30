@@ -46,3 +46,24 @@ jobs:
             }
             Write-Host "PowerShell syntax OK: $file"
           }
+
+          $templateFiles = @(
+            'run_once_before_migrate-ssh-config.ps1.tmpl'
+            'run_onchange_after_configure-terminal-bell.ps1.tmpl'
+            'run_onchange_after_install-packages.ps1.tmpl'
+          )
+          foreach ($file in $templateFiles) {
+            $templateLines = Get-Content -LiteralPath $file
+            $scriptBody = $templateLines[1..($templateLines.Count - 2)] -join "`n"
+            $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseInput(
+              $scriptBody,
+              [ref]$null,
+              [ref]$errors
+            )
+            if ($errors) {
+              $errors | ForEach-Object { Write-Error "$file`: $_" }
+              exit 1
+            }
+            Write-Host "PowerShell template syntax OK: $file"
+          }
