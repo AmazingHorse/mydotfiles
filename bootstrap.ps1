@@ -40,7 +40,12 @@ function Invoke-WslBootstrap {
         return
     }
 
-    $UbuntuAvailable = & wsl.exe -l -q 2>$null | ForEach-Object { $_.Trim([char]0x00) } | Where-Object { $_ -match 'Ubuntu|Debian' } | Select-Object -First 1
+    $UbuntuAvailable = & wsl.exe -l -q 2>$null |
+        ForEach-Object {
+            $_.Replace([string][char]0x00, [string]::Empty).Trim()
+        } |
+        Where-Object { $_ -match 'Ubuntu|Debian' } |
+        Select-Object -First 1
     if (-not $UbuntuAvailable) {
         Write-Host 'No Ubuntu/Debian WSL distro found; skipping Linux bootstrap.'
         return
@@ -48,8 +53,15 @@ function Invoke-WslBootstrap {
 
     Write-Host "Running Linux bootstrap in $UbuntuAvailable..."
     $WslSource = & wsl.exe -d $UbuntuAvailable -e wslpath -a $SourceDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not translate the source path for WSL distro '$UbuntuAvailable'."
+    }
+
     $SshFlag = if ($Ssh) { '--ssh' } else { '' }
     & wsl.exe -d $UbuntuAvailable -e bash -lc "cd '$WslSource' && bash ./bootstrap.sh $SshFlag"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Linux bootstrap failed in WSL distro '$UbuntuAvailable' (exit code $LASTEXITCODE)."
+    }
 }
 
 Install-ChezmoiIfMissing

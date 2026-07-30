@@ -36,6 +36,11 @@ install_chezmoi() {
     export PATH="$HOME/.local/bin:$PATH"
 }
 
+if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+    { [ ! -d "${XDG_RUNTIME_DIR}" ] || [ ! -w "${XDG_RUNTIME_DIR}" ]; }; then
+    unset XDG_RUNTIME_DIR
+fi
+
 install_chezmoi
 
 if [ -f "$SCRIPT_DIRECTORY/dot_zshrc" ] && [ -f "$SCRIPT_DIRECTORY/.chezmoiignore" ]; then

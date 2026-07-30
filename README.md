@@ -144,6 +144,33 @@ Machine-specific overrides belong in unmanaged `~/.gitconfig.local`, which is
 included last. Credentials, signing keys, and forced pull/rebase policy are
 intentionally not managed.
 
+### Per-folder Git email
+
+Use unmanaged `~/.gitconfig.local` with directory-based includes. Example: use a
+work email under `~/work/` while keeping the machine default elsewhere:
+
+```gitconfig
+[includeIf "gitdir:~/work/"]
+    path = ~/.gitconfig-work
+```
+
+And in `~/.gitconfig-work`:
+
+```gitconfig
+[user]
+    email = you@company.com
+```
+
+On Windows, prefer forward slashes and an absolute path, for example
+`gitdir:C:/Users/you/work/`. Trailing slash matters: it matches that directory
+and its children. Verify with `git config user.email` inside a repo under that
+tree.
+
+Commit author email is independent of how you authenticate to GitHub. Pushing
+with a personal account that has joined the org still works if the commit uses
+a corporate email. Attribution is cleaner if that email is added and verified
+on the GitHub account; some orgs also enforce verified-email or signing rules.
+
 ## SSH (lean on purpose)
 
 Private keys are **never** stored in this repo.
