@@ -1,0 +1,24 @@
+{{ if eq .chezmoi.os "linux" -}}
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v apt-get >/dev/null 2>&1; then
+    echo "Skipping package install: apt-get not found." >&2
+    exit 0
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+
+sudo apt-get update
+sudo apt-get install -y \
+    curl \
+    fzf \
+    git \
+    zsh \
+    zsh-autosuggestions \
+    zsh-syntax-highlighting
+
+if ! command -v oh-my-posh >/dev/null 2>&1; then
+    curl -fsSL https://ohmyposh.dev/install.sh | bash -s -- -d "$HOME/.local/bin"
+fi
+{{ end -}}

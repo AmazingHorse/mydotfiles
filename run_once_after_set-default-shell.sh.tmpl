@@ -1,0 +1,24 @@
+{{ if eq .chezmoi.os "linux" -}}
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v zsh >/dev/null 2>&1; then
+    echo "zsh is not installed; skipping default-shell notice." >&2
+    exit 0
+fi
+
+zsh_path="$(command -v zsh)"
+current_shell="$(getent passwd "$USER" | awk -F: '{print $7}')"
+
+if [ "$current_shell" = "$zsh_path" ]; then
+    echo "Login shell already set to zsh."
+    exit 0
+fi
+
+cat <<EOF
+zsh is installed but is not your login shell (${current_shell}).
+Set it when ready (may prompt for password):
+
+  chsh -s ${zsh_path}
+EOF
+{{ end -}}

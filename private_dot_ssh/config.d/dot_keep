@@ -1,0 +1,2 @@
+# Placeholder so chezmoi creates ~/.ssh/config.d.
+# Put private Host blocks in *.conf files here (not tracked by this repo).

@@ -1,0 +1,49 @@
+# Managed zshrc: primary interactive shell on Linux/WSL.
+
+export PATH="$HOME/.local/bin:$PATH"
+
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=5000
+SAVEHIST=10000
+setopt SHARE_HISTORY
+setopt HIST_IGNORE_DUPS
+setopt HIST_IGNORE_SPACE
+setopt AUTO_CD
+setopt INTERACTIVE_COMMENTS
+
+autoload -Uz compinit
+compinit
+
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+
+if [ -f /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+fi
+
+if [ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+fi
+
+if [ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/doc/fzf/examples/key-bindings.zsh
+elif [ -f /usr/share/fzf/key-bindings.zsh ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/fzf/key-bindings.zsh
+fi
+
+if [ -f /usr/share/doc/fzf/examples/completion.zsh ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/doc/fzf/examples/completion.zsh
+elif [ -f /usr/share/fzf/completion.zsh ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/fzf/completion.zsh
+fi
+
+if command -v oh-my-posh >/dev/null 2>&1; then
+    eval "$(oh-my-posh init zsh --config "$HOME/.config/oh-my-posh/theme.omp.json")"
+fi

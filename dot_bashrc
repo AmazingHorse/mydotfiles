@@ -1,0 +1,44 @@
+# Managed bashrc: minimal fallback shell. Primary interactive shell is zsh.
+
+case $- in
+    *i*) ;;
+    *) return ;;
+esac
+
+HISTCONTROL=ignoreboth
+HISTSIZE=5000
+HISTFILESIZE=10000
+shopt -s histappend
+shopt -s checkwinsize
+
+export PATH="$HOME/.local/bin:$PATH"
+
+if [ -x /usr/bin/dircolors ]; then
+    eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    alias grep='grep --color=auto'
+fi
+
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+
+if [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/doc/fzf/examples/key-bindings.bash
+elif [ -f /usr/share/fzf/key-bindings.bash ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/fzf/key-bindings.bash
+fi
+
+if [ -f /usr/share/doc/fzf/examples/completion.bash ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/doc/fzf/examples/completion.bash
+elif [ -f /usr/share/fzf/completion.bash ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/fzf/completion.bash
+fi
+
+if command -v oh-my-posh >/dev/null 2>&1; then
+    eval "$(oh-my-posh init bash --config "$HOME/.config/oh-my-posh/theme.omp.json")"
+fi

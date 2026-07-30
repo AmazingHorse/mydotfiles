@@ -1,0 +1,12 @@
+.git
+.gitignore
+.chezmoiignore
+LICENSE
+README.md
+bootstrap.ps1
+bootstrap.sh
+setup-ssh.ps1
+setup-ssh.sh
+*.bundle
+.DS_Store
+Thumbs.db
