@@ -1,6 +1,8 @@
+# Private / sensitive hosts first so they win over defaults below.
+Include config.d/*.conf
+
 Host *
     IdentitiesOnly yes
-    IdentityFile ~/.ssh/id_ed25519
     AddKeysToAgent yes
 
 Host github.com
@@ -8,7 +10,3 @@ Host github.com
     User git
     IdentityFile ~/.ssh/id_ed25519
     IdentitiesOnly yes
-
-# Machine-local or sensitive hosts go here and stay out of git:
-#   ~/.ssh/config.d/private.conf
-Include config.d/*.conf
