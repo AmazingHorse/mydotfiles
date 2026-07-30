@@ -86,9 +86,9 @@ bash ./scripts/ci-check.sh
 
 - **One repository, machine-local data:** shared files live here; secrets and
   sensitive host aliases stay on each machine.
-- **One default SSH key per machine:** `setup-ssh` creates `id_ed25519` and the
-  shared GitHub host uses it. Other services are not forced to use that key;
-  local `config.d` entries can select service-, work-, or host-specific keys.
+- **One default SSH key per machine:** `setup-ssh` creates `id_ed25519` and can
+  install its pubkey to GitHub (`gh`), GitLab (`glab`), or hosts (`--copy`).
+  Local `config.d` entries can still select service-specific keys when needed.
 - **Declarative first:** prefer managed files over scripts. Lifecycle scripts
   are small, idempotent, and reserved for package/profile setup.
 - **Pinned binary versions:** Oh My Posh and Git are locked in
@@ -236,17 +236,23 @@ Private keys are **never** stored in this repo.
 - On first apply, an existing unmanaged `~/.ssh/config` is copied to
   `~/.ssh/config.d/private.conf` before the shared config is installed
 - The original is also saved as `~/.ssh/config.pre-chezmoi.bak`
-- Create a machine-local key:
+- Create a machine-local key, then install the public key where needed:
 
 ```bash
 ./setup-ssh.sh
-./setup-ssh.sh --gh    # upload public key with GitHub CLI
+./setup-ssh.sh --gh --gl
+./setup-ssh.sh --copy ansible.gbtel.ca --copy backup.gbtel.ca
 ```
 
 ```powershell
 .\setup-ssh.ps1
-.\setup-ssh.ps1 -Gh
+.\setup-ssh.ps1 -Gh -Gl
+.\setup-ssh.ps1 -Copy ansible.gbtel.ca,backup.gbtel.ca
 ```
+
+`--gh` / `-Gh` uses GitHub CLI. `--gl` / `-Gl` uses GitLab CLI (`glab`).
+`--copy` / `-Copy` uses `ssh-copy-id` when present, otherwise a portable
+idempotent `authorized_keys` append over SSH (works on Windows).
 
 If `~/.ssh/config.d/private.conf` already contains data, the migration preserves
 it and leaves the old config in a timestamped backup for manual merging. Existing
@@ -255,7 +261,9 @@ never replaced.
 
 ### Future option (not implemented yet)
 
-A password-manager SSH agent (1Password / Bitwarden) can replace on-disk keys later via `IdentityAgent` in `ssh/config`. Left open intentionally so terminal features can come next.
+A password-manager SSH agent (1Password / Bitwarden) can replace on-disk keys
+later via `IdentityAgent` in `ssh/config`. Prefer that when GitHub/GitLab plus
+many servers make per-device pubkey distribution painful. Left open for now.
 
 ## History rewrite note
 
