@@ -60,6 +60,7 @@ chezmoi diff
 
 - Oh My Posh theme + PowerShell 7 profile loader
 - zsh + bash startup files
+- portable Git defaults with machine-local identity
 - shared `~/.ssh/config` (no private keys)
 - package bootstrap for prompt/shell dependencies
 
@@ -108,7 +109,6 @@ and re-run bootstrap/`chezmoi apply`.
 
 Candidates that fit best-practice dotfiles without exploding scope:
 
-- shared Git defaults (`~/.gitconfig` template for name/email only)
 - editor/`EDITOR` + basic pager/history consistency
 - `direnv` or `mise` with a pinned binary
 - fuzzy helpers layered on existing `fzf` (no Oh My Zsh)
@@ -116,6 +116,25 @@ Candidates that fit best-practice dotfiles without exploding scope:
 
 Skip for now unless needed: full plugin frameworks, package sprawl, encrypted
 private keys in-repo, and per-host secret sync.
+
+## Git
+
+Chezmoi prompts for Git name/email separately on each machine. This keeps
+personal and work identities out of the public source tree.
+
+Managed defaults include:
+
+- `main` for new repositories
+- automatic upstream setup on first push
+- pruning deleted remote branches
+- `diff3` conflict context (compatible with the currently installed Git)
+- histogram diffs, moved-line coloring, verbose commits, and rerere
+- a small global ignore file at `~/.config/git/ignore`
+
+Machine-specific overrides belong in unmanaged `~/.gitconfig.local`, which is
+included last. Credentials, signing keys, and forced pull/rebase policy are
+intentionally not managed.
+
 ## SSH (lean on purpose)
 
 Private keys are **never** stored in this repo.

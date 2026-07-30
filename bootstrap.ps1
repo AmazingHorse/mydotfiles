@@ -56,11 +56,12 @@ Install-ChezmoiIfMissing
 
 if ((Test-Path -LiteralPath (Join-Path $ScriptDirectory 'dot_config')) -and (Test-Path -LiteralPath (Join-Path $ScriptDirectory '.chezmoiignore'))) {
     Write-Host "Using local checkout: $ScriptDirectory"
+    & chezmoi init --source $ScriptDirectory
     & chezmoi apply --source $ScriptDirectory
     $ActiveSourceDirectory = $ScriptDirectory
 } elseif (Test-Path -LiteralPath (Join-Path $ChezmoiSourceDirectory '.git')) {
     Write-Host 'Updating existing chezmoi source...'
-    & chezmoi update
+    & chezmoi update --init
     $ActiveSourceDirectory = $ChezmoiSourceDirectory
 } else {
     Write-Host "Initializing from $RepositoryUrl"

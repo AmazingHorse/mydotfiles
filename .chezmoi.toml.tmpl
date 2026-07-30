@@ -1,1 +1,7 @@
+{{- $gitName := promptStringOnce . "gitName" "Git name" -}}
+{{- $gitEmail := promptStringOnce . "gitEmail" "Git email" -}}
 umask = 0o022
+
+[data]
+gitName = {{ $gitName | quote }}
+gitEmail = {{ $gitEmail | quote }}

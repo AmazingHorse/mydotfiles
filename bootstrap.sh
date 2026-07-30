@@ -40,10 +40,11 @@ install_chezmoi
 
 if [ -f "$SCRIPT_DIRECTORY/dot_zshrc" ] && [ -f "$SCRIPT_DIRECTORY/.chezmoiignore" ]; then
     echo "Using local checkout: $SCRIPT_DIRECTORY"
+    chezmoi init --source="$SCRIPT_DIRECTORY"
     chezmoi apply --source="$SCRIPT_DIRECTORY"
 elif [ -d "$HOME/.local/share/chezmoi/.git" ]; then
     echo "Updating existing chezmoi source..."
-    chezmoi update
+    chezmoi update --init
 else
     echo "Initializing from $REPO_URL"
     chezmoi init --apply "$REPO_URL"
