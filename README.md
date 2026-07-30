@@ -86,9 +86,10 @@ bash ./scripts/ci-check.sh
 
 - **One repository, machine-local data:** shared files live here; secrets and
   sensitive host aliases stay on each machine.
-- **One default SSH key per machine:** `setup-ssh` creates `id_ed25519` and can
-  install its pubkey to GitHub (`gh`), GitLab (`glab`), or hosts (`--copy`).
-  Local `config.d` entries can still select service-specific keys when needed.
+- **One default SSH key per machine:** `setup-ssh` creates `id_ed25519` by
+  default (or `--identity` for named keys like `business_ed25519`) and can
+  install that pubkey to GitHub (`gh`), GitLab (`glab`), or hosts (`--copy`).
+  Local `config.d` entries select which key each host uses.
 - **Declarative first:** prefer managed files over scripts. Lifecycle scripts
   are small, idempotent, and reserved for package/profile setup.
 - **Pinned binary versions:** Oh My Posh and Git are locked in
@@ -242,14 +243,18 @@ Private keys are **never** stored in this repo.
 ./setup-ssh.sh
 ./setup-ssh.sh --gh --gl
 ./setup-ssh.sh --copy ansible.gbtel.ca --copy backup.gbtel.ca
+./setup-ssh.sh --identity ~/.ssh/business_ed25519 --gh --gl --copy ansible.gbtel.ca
 ```
 
 ```powershell
 .\setup-ssh.ps1
 .\setup-ssh.ps1 -Gh -Gl
 .\setup-ssh.ps1 -Copy ansible.gbtel.ca,backup.gbtel.ca
+.\setup-ssh.ps1 -Identity ~/.ssh/business_ed25519 -Gh -Gl -Copy ansible.gbtel.ca
 ```
 
+`--identity` / `-Identity` selects which private key to create/use (default
+`~/.ssh/id_ed25519`). Point hosts at that path in `config.d`.
 `--gh` / `-Gh` uses GitHub CLI. `--gl` / `-Gl` uses GitLab CLI (`glab`).
 `--copy` / `-Copy` uses `ssh-copy-id` when present, otherwise a portable
 idempotent `authorized_keys` append over SSH (works on Windows).

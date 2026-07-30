@@ -1,6 +1,7 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
+    [string]$Identity = '',
     [switch]$Gh,
     [switch]$Gl,
     [string[]]$Copy = @()
@@ -11,9 +12,18 @@ $ErrorActionPreference = 'Stop'
 # Lean SSH helper: create a local Ed25519 key if missing, then print or install the public key.
 # Password-manager SSH agents (1Password/Bitwarden) are intentionally not wired here yet.
 
-$SshDirectory = Join-Path $HOME '.ssh'
-$PrivateKeyPath = Join-Path $SshDirectory 'id_ed25519'
-$PublicKeyPath = "$PrivateKeyPath.pub"
+function Expand-IdentityPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if ($Path.StartsWith('~/') -or $Path -eq '~') {
+        return Join-Path $HOME $Path.Substring(2)
+    }
+
+    return $Path
+}
 
 function Install-PublicKeyOnHost {
     param(
@@ -57,10 +67,29 @@ if (-not (Get-Command ssh-keygen -ErrorAction SilentlyContinue)) {
     throw 'ssh-keygen not found. Install Windows OpenSSH Client first.'
 }
 
-New-Item -ItemType Directory -Force -Path $SshDirectory | Out-Null
+$SshDirectory = Join-Path $HOME '.ssh'
+if ([string]::IsNullOrWhiteSpace($Identity)) {
+    $PrivateKeyPath = Join-Path $SshDirectory 'id_ed25519'
+} else {
+    $PrivateKeyPath = Expand-IdentityPath -Path $Identity
+}
+
+# Accept either the private key path or its .pub sibling.
+if ($PrivateKeyPath.EndsWith('.pub', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $PrivateKeyPath = $PrivateKeyPath.Substring(0, $PrivateKeyPath.Length - 4)
+}
+
+$PublicKeyPath = "$PrivateKeyPath.pub"
+$KeyBasename = [System.IO.Path]::GetFileName($PrivateKeyPath)
+$KeyParentDirectory = Split-Path -Parent $PrivateKeyPath
+
+New-Item -ItemType Directory -Force -Path $KeyParentDirectory | Out-Null
 
 if (-not (Test-Path -LiteralPath $PrivateKeyPath)) {
     $KeyComment = '{0}@{1}' -f $env:USERNAME, $env:COMPUTERNAME
+    if ($KeyBasename -ne 'id_ed25519') {
+        $KeyComment = '{0}-{1}' -f $KeyComment, $KeyBasename
+    }
     & ssh-keygen -t ed25519 -a 100 -f $PrivateKeyPath -C $KeyComment -N '""'
     Write-Host "Created $PrivateKeyPath"
 } else {
@@ -70,7 +99,12 @@ if (-not (Test-Path -LiteralPath $PrivateKeyPath)) {
 Write-Host "Public key: $PublicKeyPath"
 Get-Content -LiteralPath $PublicKeyPath | Write-Host
 
-$KeyTitle = '{0}-{1}' -f $env:COMPUTERNAME, (Get-Date -Format 'yyyyMMdd')
+$DateLabel = Get-Date -Format 'yyyyMMdd'
+if ($KeyBasename -eq 'id_ed25519') {
+    $KeyTitle = '{0}-{1}' -f $env:COMPUTERNAME, $DateLabel
+} else {
+    $KeyTitle = '{0}-{1}-{2}' -f $env:COMPUTERNAME, $KeyBasename, $DateLabel
+}
 
 if ($Gh) {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -119,6 +153,6 @@ Next steps:
   gh auth login
   glab auth login
   .\setup-ssh.ps1 -Gh -Gl
-  .\setup-ssh.ps1 -Copy ansible.gbtel.ca
+  .\setup-ssh.ps1 -Identity ~/.ssh/business_ed25519 -Gh -Gl -Copy ansible.gbtel.ca
 "@
 }
