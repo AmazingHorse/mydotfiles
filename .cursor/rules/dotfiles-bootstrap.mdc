@@ -21,6 +21,7 @@ Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 - Preferred + floor when PPAs lag: `git` + `git_minimum` (≥ 2.35 / `zdiff3`). Ubuntu 20.04 git-core PPA ~2.50 max.
 - Pins: `chezmoi`, `oh_my_posh`, `mise`, `python` (mise global default), `zoxide`, `ripgrep`, `fd`, `git_delta`, `git`, `git_minimum` — bump in data file only.
 - `mise` is scaffolding only: install + soft-fail activate + global `python` pin. On Windows, install **both** `mise.exe` and `mise-shim.exe` side-by-side (native shim mode). Flipper/ufbt/firmware/dev-board hosts stay in separate project repos (their own `mise.toml`).
+- Activate mise in **PowerShell 7+ only**; on Windows PowerShell 5.1 skip activate and set `MISE_PWSH_CHPWD_WARNING=0` (mise chpwd is unsupported there).
 - New pin: data → installer → soft-fail guard → CI asset check.
 - **glibc floor:** Go/CGO release builds from Ubuntu 22.04+ need `GLIBC_2.32`/`2.34`. Ubuntu 20.04 (2.31) fails with `version GLIBC_2.3x not found`. Prefer/detect musl (static) or older-compatible assets; do not assume `*-linux-amd64` / `*-glibc*` runs everywhere.
 - Chezmoi amd64: musl on musl hosts **or** when host glibc < 2.32; else `linux-glibc`. Verify `--version` after extract; retry musl on linker errors.

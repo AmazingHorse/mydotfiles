@@ -154,8 +154,12 @@ if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     Invoke-Expression (& { (zoxide init powershell | Out-String) })
 }
 
-if (Get-Command mise -ErrorAction SilentlyContinue) {
+# mise's pwsh chpwd hook needs PowerShell 7+. Skip activate on Windows PowerShell 5.1
+# (Cursor/system shells often still start 5.1) to avoid noisy warnings.
+if ($PSVersionTable.PSVersion.Major -ge 7 -and (Get-Command mise -ErrorAction SilentlyContinue)) {
     mise activate pwsh | Out-String | Invoke-Expression
+} elseif ($PSVersionTable.PSVersion.Major -lt 7) {
+    $env:MISE_PWSH_CHPWD_WARNING = '0'
 }
 
 $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
