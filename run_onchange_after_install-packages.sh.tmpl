@@ -2,8 +2,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-pinned_oh_my_posh_version='{{ .packages.oh_my_posh }}'
-pinned_git_version='{{ .packages.git }}'
+preferred_oh_my_posh_version='{{ .packages.oh_my_posh }}'
+preferred_git_version='{{ .packages.git }}'
+minimum_git_version='{{ .packages.git_minimum }}'
 
 if ! command -v apt-get >/dev/null 2>&1; then
     echo "Skipping package install: apt-get not found." >&2
@@ -11,6 +12,14 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+
+version_ge() {
+    local left_version="$1"
+    local right_version="$2"
+    local lowest_version
+    lowest_version="$(printf '%s\n%s\n' "${left_version}" "${right_version}" | sort -V | head -n1)"
+    [ "${lowest_version}" = "${right_version}" ]
+}
 
 get_git_installed_semver() {
     if ! command -v git >/dev/null 2>&1; then
@@ -33,27 +42,40 @@ ensure_git_core_ppa() {
         sudo apt-get install -y software-properties-common
     fi
 
-    echo "Adding git-core PPA for pinned Git ${pinned_git_version}"
+    echo "Adding git-core PPA (preferred Git ${preferred_git_version}, minimum ${minimum_git_version})"
     sudo add-apt-repository -y ppa:git-core/ppa
 }
 
-ensure_pinned_git() {
+ensure_modern_git() {
     local installed_semver
     installed_semver="$(get_git_installed_semver)"
-    if [ "${installed_semver}" = "${pinned_git_version}" ]; then
-        echo "Git already at pinned version ${pinned_git_version}"
+    if [ -n "${installed_semver}" ] &&
+        version_ge "${installed_semver}" "${minimum_git_version}" &&
+        [ "${installed_semver}" = "${preferred_git_version}" ]; then
+        echo "Git already at preferred version ${preferred_git_version}"
         return 0
+    fi
+
+    if [ -n "${installed_semver}" ] &&
+        version_ge "${installed_semver}" "${minimum_git_version}" &&
+        ! apt-cache policy git 2>/dev/null | grep -q 'ppa.launchpadcontent.net/git-core/ppa\|ppa.launchpad.net/git-core/ppa'; then
+        echo "Git ${installed_semver} already satisfies minimum ${minimum_git_version}; upgrading via git-core PPA when available."
     fi
 
     ensure_git_core_ppa
     sudo apt-get update
-    sudo apt-get install -y "git"
+    sudo apt-get install -y git
 
     installed_semver="$(get_git_installed_semver)"
-    if [ "${installed_semver}" != "${pinned_git_version}" ]; then
-        echo "Git install finished, but version is '${installed_semver:-unknown}' (expected '${pinned_git_version}')." >&2
-        echo "git-core PPA may not have published ${pinned_git_version} for this Ubuntu release yet." >&2
+    if [ -z "${installed_semver}" ] || ! version_ge "${installed_semver}" "${minimum_git_version}"; then
+        echo "Git install finished, but version is '${installed_semver:-unknown}' (minimum ${minimum_git_version} required for zdiff3)." >&2
         exit 1
+    fi
+
+    if [ "${installed_semver}" = "${preferred_git_version}" ]; then
+        echo "Git installed at preferred version ${preferred_git_version}"
+    else
+        echo "Git installed at ${installed_semver} (preferred ${preferred_git_version} is not published for this Ubuntu release; minimum ${minimum_git_version} satisfied)."
     fi
 }
 
@@ -82,24 +104,24 @@ ensure_pinned_oh_my_posh() {
         installed_oh_my_posh_version="$(oh-my-posh version 2>/dev/null || true)"
     fi
 
-    if [ "${installed_oh_my_posh_version}" = "${pinned_oh_my_posh_version}" ]; then
-        echo "Oh My Posh already at pinned version ${pinned_oh_my_posh_version}"
+    if [ "${installed_oh_my_posh_version}" = "${preferred_oh_my_posh_version}" ]; then
+        echo "Oh My Posh already at pinned version ${preferred_oh_my_posh_version}"
         return 0
     fi
 
-    local download_url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v${pinned_oh_my_posh_version}/${oh_my_posh_asset}"
+    local download_url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v${preferred_oh_my_posh_version}/${oh_my_posh_asset}"
     local target_path="${install_directory}/oh-my-posh"
     local temporary_path
     temporary_path="$(mktemp)"
 
-    echo "Installing pinned Oh My Posh ${pinned_oh_my_posh_version} from ${download_url}"
+    echo "Installing pinned Oh My Posh ${preferred_oh_my_posh_version} from ${download_url}"
     curl -fsSL "${download_url}" -o "${temporary_path}"
     chmod 755 "${temporary_path}"
     mv "${temporary_path}" "${target_path}"
 
     installed_oh_my_posh_version="$("${target_path}" version 2>/dev/null || true)"
-    if [ "${installed_oh_my_posh_version}" != "${pinned_oh_my_posh_version}" ]; then
-        echo "Oh My Posh install finished, but version is '${installed_oh_my_posh_version}' (expected '${pinned_oh_my_posh_version}')" >&2
+    if [ "${installed_oh_my_posh_version}" != "${preferred_oh_my_posh_version}" ]; then
+        echo "Oh My Posh install finished, but version is '${installed_oh_my_posh_version}' (expected '${preferred_oh_my_posh_version}')" >&2
         exit 1
     fi
 }
@@ -113,6 +135,6 @@ sudo apt-get install -y \
     zsh-autosuggestions \
     zsh-syntax-highlighting
 
-ensure_pinned_git
+ensure_modern_git
 ensure_pinned_oh_my_posh
 {{ end -}}

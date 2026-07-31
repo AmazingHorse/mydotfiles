@@ -144,24 +144,25 @@ function Invoke-WslBootstrap {
         }
         Write-Host "WSL source: $($WslSource.Trim())"
 
+        # Allocate a PTY with `script` so sudo can prompt for a password.
+        $BootstrapCommand = 'cd "$DOTFILES_BOOTSTRAP_SOURCE" && exec bash ./bootstrap.sh'
+        if ($Ssh) {
+            $BootstrapCommand += ' --ssh'
+        }
         $BootstrapArguments = @(
             '-d'
             $UbuntuAvailable
             '--'
-            'bash'
-            '--noprofile'
-            '--norc'
-            '-c'
-            'cd "$DOTFILES_BOOTSTRAP_SOURCE" && exec bash ./bootstrap.sh "$@"'
-            'bootstrap'
+            'script'
+            '-qec'
+            $BootstrapCommand
+            '/dev/null'
         )
-        if ($Ssh) {
-            $BootstrapArguments += '--ssh'
-        }
 
         $BootstrapStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
         $BootstrapStartInfo.FileName = 'wsl.exe'
         $BootstrapStartInfo.UseShellExecute = $false
+        $BootstrapStartInfo.CreateNoWindow = $false
         foreach ($Argument in $BootstrapArguments) {
             $BootstrapStartInfo.ArgumentList.Add($Argument)
         }

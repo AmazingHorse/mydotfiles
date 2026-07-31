@@ -8,6 +8,8 @@
 
 [packages]
 oh_my_posh = "24.8.0"
-# Aligned across platforms: git-core PPA currently ships 2.54.0;
-# winget Git.Git also publishes that exact version.
+# Preferred Git across platforms (Windows winget + newer Ubuntu PPAs).
+# Ubuntu 20.04's git-core PPA currently tops out around 2.50.x, so Linux
+# accepts the newest PPA build that still meets git_minimum (zdiff3 floor).
 git = "2.54.0"
+git_minimum = "2.35.0"

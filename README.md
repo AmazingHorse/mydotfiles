@@ -31,7 +31,8 @@ the distro accepts commands. If first-run setup is incomplete, it times out
 with instructions to open the distro manually. `bootstrap.sh` handles the
 systemd wait internally and clears an unusable `XDG_RUNTIME_DIR`. Windows
 source paths cross into WSL through `WSLENV` path conversion, preserving
-drive letters, backslashes, and spaces.
+drive letters, backslashes, and spaces. The Linux bootstrap runs under
+`script` so apt/`sudo` can prompt for a password in the same terminal.
 
 ### Linux / WSL
 
@@ -99,13 +100,13 @@ bash ./scripts/ci-check.sh
   Local `config.d` entries select which key each host uses.
 - **Declarative first:** prefer managed files over scripts. Lifecycle scripts
   are small, idempotent, and reserved for package/profile setup.
-- **Pinned binary versions:** Oh My Posh and Git are locked in
-  `.chezmoidata.toml`. Bootstrap installs those exact versions; shells refuse
-  mismatched Oh My Posh installs instead of evaluating broken init output.
-  Git is pinned because managed config uses modern features (`zdiff3`, etc.)
-  and distro defaults lag badly (especially Windows/WSL). Other apt packages
-  (`zsh`, `fzf`, …) stay floating because their exact pins do not travel
-  cleanly across Ubuntu/Debian releases.
+- **Pinned binary versions:** Oh My Posh is locked exactly in
+  `.chezmoidata.toml`. Git uses a preferred pin plus a Linux floor
+  (`git_minimum`, currently 2.35 for `zdiff3`) so Ubuntu 20.04 can install
+  the newest git-core PPA build even when preferred 2.54 is unpublished there.
+  Windows still installs the preferred winget version exactly. Shells refuse
+  mismatched Oh My Posh installs. Other apt packages (`zsh`, `fzf`, …) stay
+  floating across Ubuntu/Debian releases.
 
 - **Templates only for real differences:** OS and host templates will be added
   when behavior actually differs, rather than speculatively.
@@ -134,9 +135,10 @@ To bump pins later, change values under `[packages]` in `.chezmoidata.toml`
 and re-run bootstrap/`chezmoi apply`:
 
 - `packages.oh_my_posh` — GitHub release / winget exact version
-- `packages.git` — semantic `x.y.z`; Windows uses winget `Git.Git`, Linux uses
-  the [git-core PPA](https://launchpad.net/~git-core/+archive/ubuntu/ppa).
-  Keep this at a version both channels publish (PPA often lags Git for Windows).
+- `packages.git` — preferred semantic `x.y.z` (Windows winget exact;
+  Linux git-core PPA preferred)
+- `packages.git_minimum` — Linux floor when the preferred PPA build is not
+  published for that Ubuntu release (20.04 currently tops out near 2.50)
 
 ### Sensible next features (same pattern)
 
