@@ -173,21 +173,28 @@ function Ensure-PinnedMise {
         [string]$InstallDirectory
     )
 
+    if (-not (Test-Path -LiteralPath $InstallDirectory)) {
+        New-Item -ItemType Directory -Force -Path $InstallDirectory | Out-Null
+    }
+
+    $TargetPath = Join-Path $InstallDirectory 'mise.exe'
+    $ShimPath = Join-Path $InstallDirectory 'mise-shim.exe'
     $MiseCommand = Get-Command mise -ErrorAction SilentlyContinue
+    $VersionMatches = $false
     if ($MiseCommand) {
         try {
             $VersionOutput = & $MiseCommand.Source --version 2>$null | Select-Object -First 1
             if ($VersionOutput -and ($VersionOutput -match [regex]::Escape($PinnedVersion))) {
-                Write-Host "mise already at pinned version $PinnedVersion"
-                return
+                $VersionMatches = $true
             }
         } catch {
-            # Fall through and reinstall.
+            $VersionMatches = $false
         }
     }
 
-    if (-not (Test-Path -LiteralPath $InstallDirectory)) {
-        New-Item -ItemType Directory -Force -Path $InstallDirectory | Out-Null
+    if ($VersionMatches -and (Test-Path -LiteralPath $ShimPath)) {
+        Write-Host "mise already at pinned version $PinnedVersion (with mise-shim.exe)"
+        return
     }
 
     $Architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
@@ -201,19 +208,27 @@ function Ensure-PinnedMise {
     $DownloadUrl = "https://github.com/jdx/mise/releases/download/v${PinnedVersion}/${AssetName}"
     $TemporaryDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("mise-" + [Guid]::NewGuid().ToString('N'))
     $ArchivePath = Join-Path $TemporaryDirectory $AssetName
-    $TargetPath = Join-Path $InstallDirectory 'mise.exe'
 
     New-Item -ItemType Directory -Force -Path $TemporaryDirectory | Out-Null
     try {
         Write-Host "Installing pinned mise $PinnedVersion from $DownloadUrl"
         Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchivePath
         Expand-Archive -LiteralPath $ArchivePath -DestinationPath $TemporaryDirectory -Force
+
         $ExtractedBinary = Get-ChildItem -Path $TemporaryDirectory -Filter 'mise.exe' -Recurse |
             Select-Object -First 1
         if (-not $ExtractedBinary) {
             throw "mise.exe missing from $AssetName"
         }
+
+        $ExtractedShim = Get-ChildItem -Path $TemporaryDirectory -Filter 'mise-shim.exe' -Recurse |
+            Select-Object -First 1
+        if (-not $ExtractedShim) {
+            throw "mise-shim.exe missing from $AssetName"
+        }
+
         Move-Item -LiteralPath $ExtractedBinary.FullName -Destination $TargetPath -Force
+        Move-Item -LiteralPath $ExtractedShim.FullName -Destination $ShimPath -Force
     } finally {
         Remove-Item -LiteralPath $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -226,6 +241,9 @@ function Ensure-PinnedMise {
     $InstalledVersion = & $TargetPath --version 2>$null | Select-Object -First 1
     if (-not ($InstalledVersion -match [regex]::Escape($PinnedVersion))) {
         throw "mise install finished, but version is '$InstalledVersion' (expected '$PinnedVersion')"
+    }
+    if (-not (Test-Path -LiteralPath $ShimPath)) {
+        throw "mise-shim.exe missing after install at $ShimPath"
     }
 }
 
