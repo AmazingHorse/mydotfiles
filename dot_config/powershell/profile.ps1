@@ -117,6 +117,24 @@ function Invoke-GitFuzzySwitch {
 function gsw { Invoke-GitFuzzySwitch -GitCommand switch }
 function gco { Invoke-GitFuzzySwitch -GitCommand checkout }
 
+function bins {
+    if (-not (Get-Command fzf -ErrorAction SilentlyContinue)) {
+        Write-Warning 'bins: fzf not found'
+        return
+    }
+
+    $SelectedCommand = Get-Command -CommandType Application -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.Name } |
+        Sort-Object -Unique |
+        fzf --height=40% --reverse --prompt='bins> '
+
+    if (-not $SelectedCommand) {
+        return
+    }
+
+    $SelectedCommand
+}
+
 function dots {
     $CheatsheetPath = Join-Path $HOME '.config\mydotfiles\cheatsheet'
     if (-not (Test-Path -LiteralPath $CheatsheetPath)) {

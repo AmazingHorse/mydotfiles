@@ -70,3 +70,30 @@ gsw() {
 gco() {
     git_fuzzy_branch checkout
 }
+
+bins() {
+    if ! command -v fzf >/dev/null 2>&1; then
+        printf 'bins: fzf not found\n' >&2
+        return 1
+    fi
+
+    local selected_command
+    selected_command="$(
+        printf '%s\n' "${PATH//:/$'\n'}" |
+            while IFS= read -r path_entry; do
+                [ -n "${path_entry}" ] || continue
+                [ -d "${path_entry}" ] || continue
+                find "${path_entry}" -maxdepth 1 -type f -executable -printf '%f\n' 2>/dev/null
+                find "${path_entry}" -maxdepth 1 -type l -executable -printf '%f\n' 2>/dev/null
+            done |
+            awk 'NF && !seen[$0]++' |
+            sort |
+            fzf --height=40% --reverse --prompt='bins> '
+    )" || return 1
+
+    if [ -z "${selected_command}" ]; then
+        return 1
+    fi
+
+    printf '%s\n' "${selected_command}"
+}

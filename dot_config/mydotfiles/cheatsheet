@@ -1,33 +1,42 @@
-mydotfiles shortcuts — run: dots
+mydotfiles — run: dots
 
-Git aliases (git <alias>)
-  st status     co checkout   sw switch   br branch
-  ci commit     last          lg graph    amend
+Keyboard
+  Linux/WSL (fzf widget)
+    Ctrl-R   fuzzy history
+    Ctrl-T   fuzzy file → insert path
+    Alt-C    fuzzy directory → cd
+  Inside any fzf picker
+    type to filter · ↑/↓ or Ctrl-J/K · Enter select · Esc cancel
+  PowerShell
+    Ctrl-R   PSReadLine history search
+    bins     fuzzy pick a command on PATH (needs fzf)
 
-Fuzzy git
-  gsw   fzf + git switch
-  gco   fzf + git checkout
-
-fzf (Linux/WSL)
-  Ctrl-R  history    Ctrl-T  file    Alt-C  directory
-
-Navigation
-  z <query>   zoxide jump
-  zi          zoxide interactive
+Navigation (zoxide)
+  z src          jump to frecent dir matching "src"
+  z proj app     match multiple tokens
+  zi             interactive picker (also uses fzf if present)
+  (no cd override — plain cd still works)
 
 Search
-  rg <pat>    ripgrep (smart-case, hidden; skips .git)
-  fd <pat>    find files (gitignore-aware)
+  rg TODO                    content search (smart-case, hidden, skip .git)
+  rg -t py HTTPError         by type
+  rg -g '*.toml' pin         by glob
+  fd readme                  find files by name
+  fd -e md                   by extension
+  fd -t d config             directories only
+  bins                       fuzzy list executables on PATH
 
-Git pager
-  delta       used automatically via gitconfig
+Git (delta pager is automatic)
+  git diff | git show | git log -p | git lg
+  git st · co · sw · br · ci · last · lg · amend
+  gsw / gco                  fzf branch → switch / checkout
 
 Editor / pager
-  $EDITOR     preferred-editor (Cursor → Antigravity → VS Code → nvim/vim/vi)
-  PAGER       less -FRX when available
+  $EDITOR   preferred-editor (Cursor → Antigravity → VS Code → nvim/vim/vi)
+  PAGER     less -FRX when available
 
 SSH
   setup-ssh [--gh] [--gl] [--copy host] [--identity path]
 
 Bootstrap
-  ./bootstrap.sh | .\bootstrap.ps1   [-Ssh|--ssh] [-SkipWsl]
+  ./bootstrap.sh | .\bootstrap.ps1   [--ssh|-Ssh] [-SkipWsl]
