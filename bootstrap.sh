@@ -144,8 +144,24 @@ resolve_chezmoi_asset_name() {
 }
 
 install_chezmoi() {
+    local install_directory="${HOME}/.local/bin"
+    export PATH="${install_directory}:${PATH}"
+
+    local pinned_version
+    pinned_version="$(read_pinned_chezmoi_version)"
+    if [ -z "${pinned_version}" ]; then
+        pinned_version="${DEFAULT_CHEZMOI_VERSION}"
+    fi
+
     if command -v chezmoi >/dev/null 2>&1; then
-        return
+        local installed_version
+        installed_version="$(chezmoi --version 2>/dev/null | head -n1 || true)"
+        if [[ "${installed_version}" == *"v${pinned_version}"* ]] ||
+            [[ "${installed_version}" == *" ${pinned_version}"* ]]; then
+            echo "chezmoi already at pinned version ${pinned_version}"
+            return 0
+        fi
+        echo "chezmoi ${installed_version:-unknown} does not match pin ${pinned_version}; reinstalling..."
     fi
 
     if ! command -v curl >/dev/null 2>&1; then
@@ -157,13 +173,6 @@ install_chezmoi() {
         exit 1
     fi
 
-    local pinned_version
-    pinned_version="$(read_pinned_chezmoi_version)"
-    if [ -z "${pinned_version}" ]; then
-        pinned_version="${DEFAULT_CHEZMOI_VERSION}"
-    fi
-
-    local install_directory="${HOME}/.local/bin"
     local cache_directory="${HOME}/.cache/mydotfiles/downloads"
     local work_directory
     local asset_name
@@ -216,7 +225,6 @@ install_chezmoi() {
 
     mv "${extracted_binary}" "${install_directory}/chezmoi"
     chmod 755 "${install_directory}/chezmoi"
-    export PATH="${install_directory}:${PATH}"
 
     if ! command -v chezmoi >/dev/null 2>&1; then
         echo "chezmoi installed to ${install_directory}/chezmoi but is not on PATH." >&2
