@@ -29,6 +29,71 @@ function Install-ChezmoiIfMissing {
         [System.Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
+function Get-WslDistroReadinessState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DistroName
+    )
+
+    $ProbeScript = @'
+if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl is-system-running 2>/dev/null || true
+else
+    printf 'ready\n'
+fi
+'@
+
+    $PreviousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $StateOutput = & wsl.exe -d $DistroName -- bash --noprofile --norc -c $ProbeScript 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            return 'unavailable'
+        }
+    } finally {
+        $ErrorActionPreference = $PreviousErrorAction
+    }
+
+    $StateText = (($StateOutput | Out-String) -replace "`0", '').Trim()
+    if ([string]::IsNullOrWhiteSpace($StateText)) {
+        return 'unknown'
+    }
+
+    return ($StateText -split '\r?\n' | Select-Object -Last 1).Trim()
+}
+
+function Wait-WslDistroReady {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DistroName,
+
+        [int]$TimeoutSeconds = 120
+    )
+
+    Write-Host "Waiting for WSL distro '$DistroName' to finish starting..."
+    $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    while ((Get-Date) -lt $Deadline) {
+        $State = Get-WslDistroReadinessState -DistroName $DistroName
+        switch -Regex ($State) {
+            '^(running|degraded|ready)$' {
+                Write-Host "WSL distro '$DistroName' is ready ($State)."
+                return
+            }
+            '^(initializing|starting)$' {
+                Start-Sleep -Seconds 2
+                continue
+            }
+            default {
+                Start-Sleep -Seconds 2
+                continue
+            }
+        }
+    }
+
+    throw "Timed out waiting for WSL distro '$DistroName' to become ready."
+}
+
 function Invoke-WslBootstrap {
     param(
         [Parameter(Mandatory = $true)]
@@ -51,14 +116,17 @@ function Invoke-WslBootstrap {
         return
     }
 
+    Wait-WslDistroReady -DistroName $UbuntuAvailable
+
     Write-Host "Running Linux bootstrap in $UbuntuAvailable..."
-    $WslSource = & wsl.exe -d $UbuntuAvailable -e wslpath -a $SourceDirectory
+    $WslSource = & wsl.exe -d $UbuntuAvailable -- wslpath -a $SourceDirectory
     if ($LASTEXITCODE -ne 0) {
         throw "Could not translate the source path for WSL distro '$UbuntuAvailable'."
     }
 
     $SshFlag = if ($Ssh) { '--ssh' } else { '' }
-    & wsl.exe -d $UbuntuAvailable -e bash -lc "cd '$WslSource' && bash ./bootstrap.sh $SshFlag"
+    # --noprofile/--norc avoids loading a half-applied shell config during cold start.
+    & wsl.exe -d $UbuntuAvailable -- bash --noprofile --norc -lc "cd '$WslSource' && bash ./bootstrap.sh $SshFlag"
     if ($LASTEXITCODE -ne 0) {
         throw "Linux bootstrap failed in WSL distro '$UbuntuAvailable' (exit code $LASTEXITCODE)."
     }

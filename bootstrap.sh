@@ -36,10 +36,61 @@ install_chezmoi() {
     export PATH="$HOME/.local/bin:$PATH"
 }
 
-if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
-    { [ ! -d "${XDG_RUNTIME_DIR}" ] || [ ! -w "${XDG_RUNTIME_DIR}" ]; }; then
-    unset XDG_RUNTIME_DIR
-fi
+sanitize_runtime_directory() {
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+        { [ ! -d "${XDG_RUNTIME_DIR}" ] || [ ! -w "${XDG_RUNTIME_DIR}" ]; }; then
+        unset XDG_RUNTIME_DIR
+    fi
+}
+
+wait_for_systemd_if_needed() {
+    if [ ! -d /run/systemd/system ]; then
+        return 0
+    fi
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local state
+    state="$(systemctl is-system-running 2>/dev/null || true)"
+    case "${state}" in
+        running|degraded)
+            return 0
+            ;;
+    esac
+
+    echo "Waiting for systemd to finish starting (current: ${state:-unknown})..."
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 90 systemctl is-system-running --wait >/dev/null 2>&1 || true
+    else
+        local attempt=0
+        while [ "${attempt}" -lt 45 ]; do
+            state="$(systemctl is-system-running 2>/dev/null || true)"
+            case "${state}" in
+                running|degraded)
+                    return 0
+                    ;;
+            esac
+            sleep 2
+            attempt=$((attempt + 1))
+        done
+    fi
+
+    state="$(systemctl is-system-running 2>/dev/null || true)"
+    case "${state}" in
+        running|degraded)
+            ;;
+        *)
+            echo "Continuing with systemd state '${state:-unknown}'." >&2
+            ;;
+    esac
+}
+
+sanitize_runtime_directory
+wait_for_systemd_if_needed
+# User session / runtime dir may appear only after systemd is ready.
+sanitize_runtime_directory
 
 install_chezmoi
 
