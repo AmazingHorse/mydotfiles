@@ -2,15 +2,13 @@
 
 Cross-platform shell setup managed with [chezmoi](https://www.chezmoi.io/).
 
-Supports:
-
 - Windows PowerShell 7
 - WSL Ubuntu/Debian
 - bare-metal Debian/Ubuntu
 
-Primary Linux interactive shell: **zsh** (bash kept as a minimal fallback).
+Primary Linux interactive shell: **zsh** (bash as fallback).
 
-## One-liner bootstrap
+## Bootstrap
 
 ### Windows (PowerShell 7)
 
@@ -18,7 +16,7 @@ Primary Linux interactive shell: **zsh** (bash kept as a minimal fallback).
 irm https://raw.githubusercontent.com/AmazingHorse/mydotfiles/master/bootstrap.ps1 | iex
 ```
 
-Or from a checkout:
+From a checkout:
 
 ```powershell
 .\bootstrap.ps1
@@ -26,25 +24,23 @@ Or from a checkout:
 .\bootstrap.ps1 -SkipWsl      # Windows only
 ```
 
-On a cold WSL start, `bootstrap.ps1` uses individually bounded probes until
-the distro accepts commands. If first-run setup is incomplete, it times out
-with instructions to open the distro manually. `bootstrap.sh` handles the
-systemd wait internally and clears an unusable `XDG_RUNTIME_DIR`. Windows
-source paths cross into WSL through `WSLENV` path conversion, preserving
-drive letters, backslashes, and spaces. The Linux bootstrap runs under
-`script` so apt/`sudo` can prompt for a password in the same terminal.
+If WSL never finished first-run setup, open it once (`wsl -d Ubuntu`), then
+retry. Prefer cloning outside OneDrive. `sudo` may prompt during the Linux
+half — that is expected.
 
 ### Linux / WSL
 
-```bash
-sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply https://github.com/AmazingHorse/mydotfiles.git
-```
-
-Or from a checkout:
+From a checkout (preferred):
 
 ```bash
 ./bootstrap.sh
 ./bootstrap.sh --ssh
+```
+
+One-shot (reliable networks only):
+
+```bash
+sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply https://github.com/AmazingHorse/mydotfiles.git
 ```
 
 ## Daily update
@@ -57,196 +53,61 @@ chezmoi update
 chezmoi update
 ```
 
-Preview first:
+Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 
-```bash
-chezmoi update --apply=false
-chezmoi diff
-```
+## What you get
 
-## CI
-
-GitHub Actions runs on push/PR to `master`:
-
-- shell syntax + `shellcheck`
-- chezmoi dry-run with dummy Git identity (scripts excluded)
-- key template renders
-- pinned Oh My Posh Linux asset reachability
-- PowerShell parser checks for bootstrap/profile scripts
-
-Locally (Linux/WSL):
-
-```bash
-bash ./scripts/ci-check.sh
-```
-
-## What this manages
-
-- Oh My Posh theme + PowerShell 7 profile loader
-- zsh + bash startup files + shared shell helpers
-- preferred editor picker (Cursor → Antigravity → VS Code → nvim/vim/vi)
-- Everforest Dark terminal/prompt colors and a gentle audible terminal bell
-- portable Git defaults, aliases, and machine-local identity
+- Oh My Posh + Everforest theme; PowerShell 7 profile
+- zsh/bash startup + shared helpers
+- preferred editor: Cursor → Antigravity → VS Code → nvim/vim/vi
+- gentle terminal bell (Windows Terminal)
+- Git defaults, aliases, machine-local identity
 - shared `~/.ssh/config` (no private keys)
-- package bootstrap for prompt/shell dependencies
+- prompt/shell package bootstrap
 
-## Design choices
-
-- **One repository, machine-local data:** shared files live here; secrets and
-  sensitive host aliases stay on each machine.
-- **One default SSH key per machine:** `setup-ssh` creates `id_ed25519` by
-  default (or `--identity` for named keys like `business_ed25519`) and can
-  install that pubkey to GitHub (`gh`), GitLab (`glab`), or hosts (`--copy`).
-  Local `config.d` entries select which key each host uses.
-- **Declarative first:** prefer managed files over scripts. Lifecycle scripts
-  are small, idempotent, and reserved for package/profile setup.
-- **Pinned binary versions:** Oh My Posh is locked exactly in
-  `.chezmoidata.toml`. Git uses a preferred pin plus a Linux floor
-  (`git_minimum`, currently 2.35 for `zdiff3`) so Ubuntu 20.04 can install
-  the newest git-core PPA build even when preferred 2.54 is unpublished there.
-  Windows still installs the preferred winget version exactly. Shells refuse
-  mismatched Oh My Posh installs. Other apt packages (`zsh`, `fzf`, …) stay
-  floating across Ubuntu/Debian releases.
-
-- **Templates only for real differences:** OS and host templates will be added
-  when behavior actually differs, rather than speculatively.
-- **No `just` dependency yet:** use `bash ./scripts/ci-check.sh` (and GitHub
-  Actions) for validation. A future `justfile` may wrap that, but bootstrap
-  and normal use will not require it.
-
-### Adding a feature (required pattern)
-
-Use this for the next terminal/tooling additions. Do not invent a second
-bootstrap style.
-
-1. **Declare desired state** as managed files (`dot_*`, `private_*`,
-   `dot_config/...`) whenever possible.
-2. **Pin third-party binaries** in `.chezmoidata.toml` when we control the
-   install path (GitHub release / winget version). Bump pins deliberately.
-3. **Install/upgrade only in `run_onchange_*` scripts**, templated from that
-   pin, idempotent, and verified after install.
-4. **Fail soft in shell profiles** when the binary is missing or the version
-   does not match the pin — never `eval` broken init output.
-5. **Keep machine-local / secret data out of git** (`config.d`, local chezmoi
-   config, password-manager agents later).
-6. **Document the bump path** in this README when a new pin is introduced.
-
-To bump pins later, change values under `[packages]` in `.chezmoidata.toml`
-and re-run bootstrap/`chezmoi apply`:
-
-- `packages.oh_my_posh` — GitHub release / winget exact version
-- `packages.git` — preferred semantic `x.y.z` (Windows winget exact;
-  Linux git-core PPA preferred)
-- `packages.git_minimum` — Linux floor when the preferred PPA build is not
-  published for that Ubuntu release (20.04 currently tops out near 2.50)
-
-### Sensible next features (same pattern)
-
-Already shipped in-shell: preferred editor chain, `PAGER`, Git aliases
-(`st`/`co`/`sw`/`br`/`ci`/`last`/`lg`/`amend`), and soft-fail fzf helpers
-(`gsw` / `gco`).
-
-Still good candidates later:
-
-- `direnv` or `mise` with a pinned binary
-- password-manager SSH agent as an optional IdentityAgent template
-- richer fuzzy helpers (repo jump, stash pick) without a plugin framework
-
-Skip for now unless needed: full plugin frameworks, package sprawl, encrypted
-private keys in-repo, and per-host secret sync.
+Pinned tool versions live in `.chezmoidata.toml` (chezmoi, Oh My Posh, Git).
 
 ## Git
 
-Chezmoi prompts for Git name/email separately on each machine. This keeps
-personal and work identities out of the public source tree.
+Chezmoi prompts for name/email **per machine**. Overrides go in unmanaged
+`~/.gitconfig.local` (included last). Credentials and signing are not managed.
 
-Managed defaults include:
+### Aliases (`git <alias>`)
 
-- `main` for new repositories
-- automatic upstream setup on first push
-- pruning deleted remote branches
-- `zdiff3` conflict context (requires the pinned Git ≥ 2.35)
-- histogram diffs, moved-line coloring, verbose commits, and rerere
-- short aliases: `st`, `co`, `sw`, `br`, `ci`, `last`, `lg`, `amend`
-- `core.editor` via `preferred-editor` (same picker as `$EDITOR`)
-- a small global ignore file at `~/.config/git/ignore`
+- `st` → status · `co` → checkout · `sw` → switch · `br` → branch
+- `ci` → commit · `last` → latest commit · `lg` → recent graph · `amend`
 
-Shell helpers (soft-fail if tools are missing):
+### Fuzzy helpers
 
-- `$EDITOR` / `$VISUAL` from `preferred-editor`: Cursor → Antigravity (`antigravity` / `agy`) → VS Code (`code`) → `nvim` / `vim` / `vi`
-- `gsw` / `gco`: fuzzy branch switch/checkout via `fzf`
+- `gsw` / `gco` — pick a branch with `fzf`, then switch/checkout
+- Linux/WSL `fzf` keys: `Ctrl-R` history, `Ctrl-T` file, `Alt-C` directory
 
-### Shell cheat sheet
+### Per-folder email
 
-Git aliases (use as `git <alias>`):
-
-- `git st` → `git status`
-- `git co` → `git checkout`
-- `git sw` → `git switch`
-- `git br` → `git branch`
-- `git ci` → `git commit`
-- `git last` → show the latest commit
-- `git lg` → compact decorated graph of the latest 20 commits
-- `git amend` → amend the latest commit without changing its message
-
-Fuzzy helpers (run directly inside a repository):
-
-- `gsw` → select a local/remote branch with `fzf`, then `git switch`
-- `gco` → select a local/remote branch with `fzf`, then `git checkout`
-
-Linux/WSL zsh and bash key bindings supplied by the distro `fzf` scripts:
-
-- `Ctrl-R` → fuzzy-search shell history
-- `Ctrl-T` → fuzzy-select a file and insert its path at the prompt
-- `Alt-C` → fuzzy-select a directory and change into it
-- Inside an `fzf` picker: type to filter, use arrows or `Ctrl-J`/`Ctrl-K`,
-  press `Enter` to choose, or `Esc`/`Ctrl-C` to cancel
-
-PowerShell supports `gsw` / `gco`; the `Ctrl-R`, `Ctrl-T`, and `Alt-C` bindings
-above are currently Linux/WSL-only.
-
-Machine-specific overrides belong in unmanaged `~/.gitconfig.local`, which is
-included last. Credentials, signing keys, and forced pull/rebase policy are
-intentionally not managed.
-
-### Per-folder Git email
-
-Use unmanaged `~/.gitconfig.local` with directory-based includes. Example: use a
-work email under `~/work/` while keeping the machine default elsewhere:
+In `~/.gitconfig.local`:
 
 ```gitconfig
 [includeIf "gitdir:~/work/"]
     path = ~/.gitconfig-work
 ```
 
-And in `~/.gitconfig-work`:
-
 ```gitconfig
+# ~/.gitconfig-work
 [user]
     email = you@company.com
 ```
 
-On Windows, prefer forward slashes and an absolute path, for example
-`gitdir:C:/Users/you/work/`. Trailing slash matters: it matches that directory
-and its children. Verify with `git config user.email` inside a repo under that
-tree.
+On Windows use forward slashes and an absolute `gitdir:` path
+(e.g. `gitdir:C:/Users/you/work/`). Trailing slash matches that tree.
 
-Commit author email is independent of how you authenticate to GitHub. Pushing
-with a personal account that has joined the org still works if the commit uses
-a corporate email. Attribution is cleaner if that email is added and verified
-on the GitHub account; some orgs also enforce verified-email or signing rules.
+## SSH
 
-## SSH (lean on purpose)
+Private keys are never in this repo.
 
-Private keys are **never** stored in this repo.
-
-- Shared config lives in `~/.ssh/config`
-- Sensitive hosts go in `~/.ssh/config.d/*.conf` (local only)
-- Portable identity paths use `~/.ssh/key-name`, never OS-specific home paths
-- On first apply, an existing unmanaged `~/.ssh/config` is copied to
-  `~/.ssh/config.d/private.conf` before the shared config is installed
-- The original is also saved as `~/.ssh/config.pre-chezmoi.bak`
-- Create a machine-local key, then install the public key where needed:
+- Shared: `~/.ssh/config`
+- Local hosts: `~/.ssh/config.d/*.conf`
+- First apply migrates an existing unmanaged config into
+  `config.d/private.conf` and keeps `config.pre-chezmoi.bak`
 
 ```bash
 ./setup-ssh.sh
@@ -262,27 +123,12 @@ Private keys are **never** stored in this repo.
 .\setup-ssh.ps1 -Identity ~/.ssh/business_ed25519 -Gh -Gl -Copy ansible.gbtel.ca
 ```
 
-`--identity` / `-Identity` selects which private key to create/use (default
-`~/.ssh/id_ed25519`). Point hosts at that path in `config.d`.
-`--gh` / `-Gh` uses GitHub CLI. `--gl` / `-Gl` uses GitLab CLI (`glab`).
-`--copy` / `-Copy` uses `ssh-copy-id` when present, otherwise a portable
-idempotent `authorized_keys` append over SSH (works on Windows).
+Default key `~/.ssh/id_ed25519`. `--gh`/`-Gh` = GitHub CLI, `--gl`/`-Gl` =
+GitLab CLI, `--copy`/`-Copy` = `ssh-copy-id` or portable `authorized_keys`
+append.
 
-If `~/.ssh/config.d/private.conf` already contains data, the migration preserves
-it and leaves the old config in a timestamped backup for manual merging. Existing
-private keys, public keys, `known_hosts`, and other files under `~/.ssh` are
-never replaced.
+## History note
 
-### Future option (not implemented yet)
-
-A password-manager SSH agent (1Password / Bitwarden) can replace on-disk keys
-later via `IdentityAgent` in `ssh/config`. Prefer that when GitHub/GitLab plus
-many servers make per-device pubkey distribution painful. Left open for now.
-
-## History rewrite note
-
-This repository was reset to a clean history. Legacy encrypted SSH private-key blobs were removed and should not be reintroduced. Existing clones must re-clone after the remote is force-updated.
-
-Local backup of the previous history (if created during migration):
-
-`../mydotfiles-legacy-backup/`
+This repo was reset to a clean history. Re-clone after the remote force-update.
+Do not reintroduce encrypted private-key blobs. Optional local backup:
+`../mydotfiles-legacy-backup/`.

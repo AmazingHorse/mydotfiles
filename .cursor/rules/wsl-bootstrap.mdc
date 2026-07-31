@@ -1,0 +1,15 @@
+---
+description: WSL-specific bootstrap pitfalls (paths, TTY, systemd, downloads)
+globs: bootstrap.*,run_onchange_after_install-packages.*,run_once_before_migrate-ssh-config.*,scripts/ci-check.sh
+alwaysApply: false
+---
+
+# WSL bootstrap pitfalls
+
+See `dotfiles-bootstrap.mdc` for general rules.
+
+- **Paths:** never pass Windows `\` paths as `wsl` argv (`wslpath` → `C:Users...`). Use `WSLENV=VAR/pu`. Launch long `bash -c` via .NET `ArgumentList`. Clone outside OneDrive.
+- **Cold start:** bounded Windows `/bin/true` probes only; Linux waits for systemd; accept `running`|`degraded`. First launch may need interactive `wsl -d Ubuntu`.
+- **sudo:** wrap Linux bootstrap in `script -qec '...' /dev/null` for a PTY.
+- **Downloads:** pin + retry + checksum in `$HOME/.cache/...` (see `bootstrap.sh`); WSL `curl | sh` often CRC-fails.
+- **Debug:** PS “Linux bootstrap failed” = child exit; use `bash -x ./bootstrap.sh` in-distro.

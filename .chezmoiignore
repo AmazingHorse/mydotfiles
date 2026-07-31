@@ -9,6 +9,7 @@ setup-ssh.ps1
 setup-ssh.sh
 bin/
 .github/
+.cursor/
 scripts/
 *.bundle
 .DS_Store

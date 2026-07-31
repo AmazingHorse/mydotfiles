@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_URL="${DOTFILES_REPO_URL:-https://github.com/AmazingHorse/mydotfiles.git}"
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_SETUP_SSH=0
+DEFAULT_CHEZMOI_VERSION='2.71.1'
 
 for argument in "$@"; do
     case "$argument" in
@@ -26,14 +27,165 @@ EOF
     esac
 done
 
+read_pinned_chezmoi_version() {
+    local data_file="${SCRIPT_DIRECTORY}/.chezmoidata.toml"
+    if [ -f "${data_file}" ]; then
+        awk -F'"' '/^chezmoi[[:space:]]*=/ { print $2; exit }' "${data_file}"
+        return 0
+    fi
+    printf '%s\n' "${DEFAULT_CHEZMOI_VERSION}"
+}
+
+download_with_retries() {
+    local destination_path="$1"
+    local source_url="$2"
+    local attempt=1
+    local partial_path="${destination_path}.partial"
+
+    while [ "${attempt}" -le 5 ]; do
+        echo "Downloading ${source_url} (attempt ${attempt}/5)..."
+        if curl \
+            --fail \
+            --location \
+            --connect-timeout 20 \
+            --max-time 300 \
+            --output "${partial_path}" \
+            "${source_url}"; then
+            mv "${partial_path}" "${destination_path}"
+            return 0
+        fi
+        rm -f "${partial_path}"
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    echo "Failed to download ${source_url} after 5 attempts." >&2
+    return 1
+}
+
+verify_sha256() {
+    local archive_path="$1"
+    local checksums_path="$2"
+    local archive_basename
+    local expected_hash
+    local actual_hash
+
+    archive_basename="$(basename "${archive_path}")"
+    expected_hash="$(
+        grep -E "[[:space:]]${archive_basename}\$" "${checksums_path}" |
+            awk '{ print $1 }' |
+            head -n1
+    )"
+    if [ -z "${expected_hash}" ]; then
+        echo "No checksum entry for ${archive_basename}." >&2
+        return 1
+    fi
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual_hash="$(sha256sum "${archive_path}" | awk '{ print $1 }')"
+    elif command -v shasum >/dev/null 2>&1; then
+        actual_hash="$(shasum -a 256 "${archive_path}" | awk '{ print $1 }')"
+    else
+        echo "sha256sum/shasum not found; cannot verify chezmoi download." >&2
+        return 1
+    fi
+
+    if [ "${actual_hash}" != "${expected_hash}" ]; then
+        echo "Checksum mismatch for ${archive_basename}." >&2
+        echo "expected ${expected_hash}" >&2
+        echo "got      ${actual_hash}" >&2
+        return 1
+    fi
+}
+
+resolve_chezmoi_asset_name() {
+    local pinned_version="$1"
+    local architecture
+    architecture="$(uname -m)"
+
+    case "${architecture}" in
+        x86_64|amd64)
+            if [ -e /lib/ld-musl-x86_64.so.1 ] || [ -e /lib/libc.musl-x86_64.so.1 ]; then
+                printf 'chezmoi_%s_linux-musl_amd64.tar.gz\n' "${pinned_version}"
+            else
+                printf 'chezmoi_%s_linux-glibc_amd64.tar.gz\n' "${pinned_version}"
+            fi
+            ;;
+        aarch64|arm64)
+            printf 'chezmoi_%s_linux_arm64.tar.gz\n' "${pinned_version}"
+            ;;
+        *)
+            echo "Unsupported architecture for chezmoi install: ${architecture}" >&2
+            return 1
+            ;;
+    esac
+}
+
 install_chezmoi() {
     if command -v chezmoi >/dev/null 2>&1; then
         return
     fi
 
-    echo "Installing chezmoi..."
-    sh -c "$(curl -fsLS https://get.chezmoi.io)" -- -b "$HOME/.local/bin"
-    export PATH="$HOME/.local/bin:$PATH"
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "curl is required to install chezmoi." >&2
+        exit 1
+    fi
+    if ! command -v tar >/dev/null 2>&1; then
+        echo "tar is required to install chezmoi." >&2
+        exit 1
+    fi
+
+    local pinned_version
+    pinned_version="$(read_pinned_chezmoi_version)"
+    if [ -z "${pinned_version}" ]; then
+        pinned_version="${DEFAULT_CHEZMOI_VERSION}"
+    fi
+
+    local install_directory="${HOME}/.local/bin"
+    local cache_directory="${HOME}/.cache/mydotfiles/downloads"
+    local work_directory
+    local asset_name
+    local archive_path
+    local checksums_path
+    local release_base
+    local extracted_binary
+
+    mkdir -p "${install_directory}" "${cache_directory}"
+    work_directory="$(mktemp -d "${cache_directory}/chezmoi.XXXXXX")"
+    cleanup_chezmoi_work() {
+        rm -rf "${work_directory}"
+    }
+    trap cleanup_chezmoi_work EXIT
+
+    asset_name="$(resolve_chezmoi_asset_name "${pinned_version}")"
+    archive_path="${work_directory}/${asset_name}"
+    checksums_path="${work_directory}/chezmoi_${pinned_version}_checksums.txt"
+    release_base="https://github.com/twpayne/chezmoi/releases/download/v${pinned_version}"
+
+    echo "Installing pinned chezmoi ${pinned_version}..."
+    download_with_retries "${checksums_path}" "${release_base}/chezmoi_${pinned_version}_checksums.txt"
+    download_with_retries "${archive_path}" "${release_base}/${asset_name}"
+    verify_sha256 "${archive_path}" "${checksums_path}"
+
+    tar -xzf "${archive_path}" -C "${work_directory}"
+    extracted_binary="${work_directory}/chezmoi"
+    if [ ! -x "${extracted_binary}" ]; then
+        echo "chezmoi binary missing from ${asset_name}." >&2
+        exit 1
+    fi
+
+    mv "${extracted_binary}" "${install_directory}/chezmoi"
+    chmod 755 "${install_directory}/chezmoi"
+    export PATH="${install_directory}:${PATH}"
+
+    if ! command -v chezmoi >/dev/null 2>&1; then
+        echo "chezmoi installed to ${install_directory}/chezmoi but is not on PATH." >&2
+        exit 1
+    fi
+
+    echo "chezmoi $(chezmoi --version | head -n1) installed to ${install_directory}/chezmoi"
+    trap - EXIT
+    cleanup_chezmoi_work
 }
 
 sanitize_runtime_directory() {

@@ -115,4 +115,26 @@ case "${http_status}" in
         ;;
 esac
 
+echo "==> Verify pinned chezmoi release asset"
+chezmoi_version="$(
+    awk -F'"' '/^chezmoi[[:space:]]*=/ { print $2; exit }' .chezmoidata.toml
+)"
+if [ -z "${chezmoi_version}" ]; then
+    echo "Could not read packages.chezmoi from .chezmoidata.toml" >&2
+    exit 1
+fi
+
+chezmoi_asset_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-glibc_amd64.tar.gz"
+chezmoi_checksums_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_checksums.txt"
+for url in "${chezmoi_asset_url}" "${chezmoi_checksums_url}"; do
+    http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
+    case "${http_status}" in
+        200|302) ;;
+        *)
+            echo "Pinned chezmoi asset not reachable (${http_status}): ${url}" >&2
+            exit 1
+            ;;
+    esac
+done
+
 echo "==> CI checks passed"
