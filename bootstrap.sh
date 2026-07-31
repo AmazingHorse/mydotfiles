@@ -98,6 +98,28 @@ verify_sha256() {
     fi
 }
 
+host_uses_musl() {
+    [ -e /lib/ld-musl-x86_64.so.1 ] ||
+        [ -e /lib/libc.musl-x86_64.so.1 ] ||
+        [ -e /lib/ld-musl-aarch64.so.1 ]
+}
+
+# Chezmoi glibc amd64 builds ship from Ubuntu 22.04+ runners and need
+# GLIBC_2.32/2.34. Ubuntu 20.04 (glibc 2.31) and older must use musl.
+host_glibc_supports_chezmoi_glibc_build() {
+    local glibc_version=''
+    if command -v ldd >/dev/null 2>&1; then
+        glibc_version="$(ldd --version 2>&1 | awk 'NR==1 { print $NF; exit }')"
+    fi
+    if [ -z "${glibc_version}" ]; then
+        return 1
+    fi
+
+    local lowest_version
+    lowest_version="$(printf '%s\n%s\n' "${glibc_version}" '2.32' | sort -V | head -n1)"
+    [ "${lowest_version}" = '2.32' ]
+}
+
 resolve_chezmoi_asset_name() {
     local pinned_version="$1"
     local architecture
@@ -105,7 +127,7 @@ resolve_chezmoi_asset_name() {
 
     case "${architecture}" in
         x86_64|amd64)
-            if [ -e /lib/ld-musl-x86_64.so.1 ] || [ -e /lib/libc.musl-x86_64.so.1 ]; then
+            if host_uses_musl || ! host_glibc_supports_chezmoi_glibc_build; then
                 printf 'chezmoi_%s_linux-musl_amd64.tar.gz\n' "${pinned_version}"
             else
                 printf 'chezmoi_%s_linux-glibc_amd64.tar.gz\n' "${pinned_version}"
@@ -162,7 +184,7 @@ install_chezmoi() {
     checksums_path="${work_directory}/chezmoi_${pinned_version}_checksums.txt"
     release_base="https://github.com/twpayne/chezmoi/releases/download/v${pinned_version}"
 
-    echo "Installing pinned chezmoi ${pinned_version}..."
+    echo "Installing pinned chezmoi ${pinned_version} (${asset_name})..."
     download_with_retries "${checksums_path}" "${release_base}/chezmoi_${pinned_version}_checksums.txt"
     download_with_retries "${archive_path}" "${release_base}/${asset_name}"
     verify_sha256 "${archive_path}" "${checksums_path}"
@@ -172,6 +194,24 @@ install_chezmoi() {
     if [ ! -x "${extracted_binary}" ]; then
         echo "chezmoi binary missing from ${asset_name}." >&2
         exit 1
+    fi
+
+    if ! "${extracted_binary}" --version >/dev/null 2>&1; then
+        echo "Downloaded ${asset_name} is not runnable on this host (often GLIBC_2.32/2.34)." >&2
+        if [[ "${asset_name}" == *linux-glibc_amd64* ]]; then
+            echo "Retrying with statically linked musl build..." >&2
+            asset_name="chezmoi_${pinned_version}_linux-musl_amd64.tar.gz"
+            archive_path="${work_directory}/${asset_name}"
+            download_with_retries "${archive_path}" "${release_base}/${asset_name}"
+            verify_sha256 "${archive_path}" "${checksums_path}"
+            tar -xzf "${archive_path}" -C "${work_directory}"
+            if ! "${extracted_binary}" --version >/dev/null 2>&1; then
+                echo "musl chezmoi binary is also not runnable." >&2
+                exit 1
+            fi
+        else
+            exit 1
+        fi
     fi
 
     mv "${extracted_binary}" "${install_directory}/chezmoi"

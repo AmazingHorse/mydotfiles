@@ -124,9 +124,10 @@ if [ -z "${chezmoi_version}" ]; then
     exit 1
 fi
 
-chezmoi_asset_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-glibc_amd64.tar.gz"
 chezmoi_checksums_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_checksums.txt"
-for url in "${chezmoi_asset_url}" "${chezmoi_checksums_url}"; do
+chezmoi_glibc_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-glibc_amd64.tar.gz"
+chezmoi_musl_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-musl_amd64.tar.gz"
+for url in "${chezmoi_checksums_url}" "${chezmoi_glibc_url}" "${chezmoi_musl_url}"; do
     http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
     case "${http_status}" in
         200|302) ;;

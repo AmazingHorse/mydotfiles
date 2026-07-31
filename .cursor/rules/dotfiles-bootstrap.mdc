@@ -5,27 +5,31 @@ alwaysApply: true
 
 # Dotfiles / bootstrap (agent)
 
-Human docs: `README.md`. WSL pitfalls: `wsl-bootstrap.mdc`.
+Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 
 ## Architecture
 - Declarative first (`dot_*`, `private_*`, `dot_config/...`); scripts last.
 - `run_once_*` / `run_onchange_*`: small, idempotent; packages/migrations only.
-- One bootstrap style: `bootstrap.ps1` / `bootstrap.sh` → tool → init/apply|update → optional SSH. No second entry path.
-- Ship Linux + Windows unless OS-specific; templates only for real OS/host diffs.
-- Secrets stay local (`config.d`, chezmoi config, password managers). Migrations backup first (`run_once_*`).
+- One bootstrap style: `bootstrap.ps1` / `bootstrap.sh` → tool → init/apply|update → optional SSH.
+- Ship Linux + Windows unless OS-specific; templates only for real diffs.
+- Secrets local (`config.d`, chezmoi config). Migrations backup first (`run_once_*`).
+- Profiles soft-fail on missing/mismatched bins — never `eval` broken init.
+- Ensure `~/.local/bin` on PATH before relying on user-installed tools.
 
-## Dependencies
-- Pin self-installed binaries in `.chezmoidata.toml` `[packages]`; float apt (`zsh`, `fzf`, …).
-- Preferred + floor when PPAs lag: `git` + `git_minimum` (≥ 2.35 for `zdiff3`).
-- Current pins: `chezmoi`, `oh_my_posh`, `git`, `git_minimum` — bump in data file, not hardcoded elsewhere.
-- New pin: (1) data file (2) `run_onchange_*` or bootstrap install (3) soft-fail in profiles — never `eval` broken init (4) CI asset check when practical.
-- Downloads: prefer winget/apt when exact; else GitHub release → `$HOME/.cache/...`, retry, checksum, `~/.local/bin`. No bare `curl | sh` for critical bins on flaky WSL.
-- Scripts must be re-runnable (skip if desired version present).
+## Dependencies / ABI
+- Pin self-installed bins in `.chezmoidata.toml`; float apt (`zsh`, `fzf`, …).
+- Preferred + floor when PPAs lag: `git` + `git_minimum` (≥ 2.35 / `zdiff3`). Ubuntu 20.04 git-core PPA ~2.50 max.
+- Pins: `chezmoi`, `oh_my_posh`, `git`, `git_minimum` — bump in data file only.
+- New pin: data → installer → soft-fail guard → CI asset check.
+- **glibc floor:** Go/CGO release builds from Ubuntu 22.04+ need `GLIBC_2.32`/`2.34`. Ubuntu 20.04 (2.31) fails with `version GLIBC_2.3x not found`. Prefer/detect musl (static) or older-compatible assets; do not assume `*-linux-amd64` / `*-glibc*` runs everywhere.
+- Chezmoi amd64: musl on musl hosts **or** when host glibc < 2.32; else `linux-glibc`. Verify `--version` after extract; retry musl on linker errors.
+- Downloads: winget/apt when exact; else GitHub → `$HOME/.cache/...`, retry, checksum, `~/.local/bin`. No bare `curl | sh` for critical bins on flaky nets.
+- Re-runnable: skip if desired version already present.
 
-## Validation
-- Entry: `bash ./scripts/ci-check.sh` (no `just` yet). CI: shellcheck, chezmoi dry-run, template renders, pin reachability, PowerShell parse.
-- Bootstrap “failed” wrappers only mirror child exit — reproduce with `bash -x` / PS tracing in-target.
+## Validation / debug
+- `bash ./scripts/ci-check.sh`. CI: shellcheck, chezmoi dry-run, templates, pin URLs, PS parse.
+- Outer “bootstrap failed” = child exit only — `bash -x` / PS trace in-target.
 
-## Backlog (same patterns)
-- Good later: pinned `direnv`/`mise`; optional password-manager `IdentityAgent`; richer fzf helpers without plugin frameworks.
-- Skip: plugin frameworks, package sprawl, in-repo private keys, per-host secret sync.
+## Backlog
+- Later: pinned `direnv`/`mise`; optional PM `IdentityAgent`; richer fzf helpers.
+- Skip: plugin frameworks, package sprawl, in-repo keys, secret sync.

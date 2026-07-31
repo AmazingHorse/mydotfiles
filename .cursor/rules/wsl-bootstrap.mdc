@@ -1,15 +1,17 @@
 ---
-description: WSL-specific bootstrap pitfalls (paths, TTY, systemd, downloads)
+description: WSL-specific bootstrap pitfalls (paths, TTY, systemd, downloads, ABI)
 globs: bootstrap.*,run_onchange_after_install-packages.*,run_once_before_migrate-ssh-config.*,scripts/ci-check.sh
 alwaysApply: false
 ---
 
 # WSL bootstrap pitfalls
 
-See `dotfiles-bootstrap.mdc` for general rules.
+See `dotfiles-bootstrap.mdc` for general + ABI rules.
 
-- **Paths:** never pass Windows `\` paths as `wsl` argv (`wslpath` → `C:Users...`). Use `WSLENV=VAR/pu`. Launch long `bash -c` via .NET `ArgumentList`. Clone outside OneDrive.
-- **Cold start:** bounded Windows `/bin/true` probes only; Linux waits for systemd; accept `running`|`degraded`. First launch may need interactive `wsl -d Ubuntu`.
-- **sudo:** wrap Linux bootstrap in `script -qec '...' /dev/null` for a PTY.
-- **Downloads:** pin + retry + checksum in `$HOME/.cache/...` (see `bootstrap.sh`); WSL `curl | sh` often CRC-fails.
-- **Debug:** PS “Linux bootstrap failed” = child exit; use `bash -x ./bootstrap.sh` in-distro.
+- **Paths:** never pass Windows `\` as `wsl` argv (`wslpath` → `C:Users...`). Use `WSLENV=VAR/pu`. Long `bash -c` via .NET `ArgumentList`. Clone outside OneDrive/Files-On-Demand.
+- **Cold start:** bounded Windows `/bin/true` probes; Linux waits for systemd; accept `running`|`degraded`. Failed units (`multipathd`, `atd`, `wsl2-xwayland`, …) are normal. First launch may need interactive `wsl -d Ubuntu`.
+- **XDG_RUNTIME_DIR:** unset if missing/unwritable (common before/during systemd ready).
+- **sudo:** noninteractive `wsl` has no TTY — wrap in `script -qec '...' /dev/null`.
+- **Downloads:** WSL nets flake; `curl | sh` / mid-body write → CRC on tar.gz. Pin + retry + checksum in `$HOME/.cache/...`.
+- **ABI:** stock “Ubuntu” WSL is often 20.04 → glibc 2.31; modern chezmoi glibc builds need 2.32+. Use musl fallback (`bootstrap.sh`).
+- **Debug:** PS “Linux bootstrap failed” = child exit; `bash -x ./bootstrap.sh` in-distro. Check `ldd --version`, `chezmoi --version`, last apt/`dpkg` lock if hung on packages.
