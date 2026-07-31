@@ -118,16 +118,71 @@ function Invoke-WslBootstrap {
     Wait-WslDistroReady -DistroName $UbuntuAvailable
 
     Write-Host "Running Linux bootstrap in $UbuntuAvailable..."
-    $WslSource = & wsl.exe -d $UbuntuAvailable -- wslpath -a $SourceDirectory
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not translate the source path for WSL distro '$UbuntuAvailable'."
-    }
+    $SourceVariableName = 'DOTFILES_BOOTSTRAP_SOURCE'
+    $PreviousSourceValue = [Environment]::GetEnvironmentVariable(
+        $SourceVariableName,
+        [EnvironmentVariableTarget]::Process
+    )
+    $PreviousWslEnv = $env:WSLENV
+    try {
+        [Environment]::SetEnvironmentVariable(
+            $SourceVariableName,
+            $SourceDirectory,
+            [EnvironmentVariableTarget]::Process
+        )
+        $OtherWslEnvEntries = @(
+            $PreviousWslEnv -split ':' |
+                Where-Object {
+                    $_ -and $_ -notmatch "^${SourceVariableName}(?:/.*)?$"
+                }
+        )
+        $env:WSLENV = (@("${SourceVariableName}/pu") + $OtherWslEnvEntries) -join ':'
 
-    $SshFlag = if ($Ssh) { '--ssh' } else { '' }
-    # --noprofile/--norc avoids loading a half-applied shell config during cold start.
-    & wsl.exe -d $UbuntuAvailable -- bash --noprofile --norc -lc "cd '$WslSource' && bash ./bootstrap.sh $SshFlag"
-    if ($LASTEXITCODE -ne 0) {
-        throw "Linux bootstrap failed in WSL distro '$UbuntuAvailable' (exit code $LASTEXITCODE)."
+        $WslSource = & wsl.exe -d $UbuntuAvailable -- printenv $SourceVariableName
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($WslSource)) {
+            throw "Could not translate the source path for WSL distro '$UbuntuAvailable'."
+        }
+        Write-Host "WSL source: $($WslSource.Trim())"
+
+        $BootstrapArguments = @(
+            '-d'
+            $UbuntuAvailable
+            '--'
+            'bash'
+            '--noprofile'
+            '--norc'
+            '-c'
+            'cd "$DOTFILES_BOOTSTRAP_SOURCE" && exec bash ./bootstrap.sh "$@"'
+            'bootstrap'
+        )
+        if ($Ssh) {
+            $BootstrapArguments += '--ssh'
+        }
+
+        $BootstrapStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $BootstrapStartInfo.FileName = 'wsl.exe'
+        $BootstrapStartInfo.UseShellExecute = $false
+        foreach ($Argument in $BootstrapArguments) {
+            $BootstrapStartInfo.ArgumentList.Add($Argument)
+        }
+
+        $BootstrapProcess = [System.Diagnostics.Process]::Start($BootstrapStartInfo)
+        try {
+            $BootstrapProcess.WaitForExit()
+            $BootstrapExitCode = $BootstrapProcess.ExitCode
+        } finally {
+            $BootstrapProcess.Dispose()
+        }
+        if ($BootstrapExitCode -ne 0) {
+            throw "Linux bootstrap failed in WSL distro '$UbuntuAvailable' (exit code $BootstrapExitCode)."
+        }
+    } finally {
+        [Environment]::SetEnvironmentVariable(
+            $SourceVariableName,
+            $PreviousSourceValue,
+            [EnvironmentVariableTarget]::Process
+        )
+        $env:WSLENV = $PreviousWslEnv
     }
 }
 
