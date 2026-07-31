@@ -1,0 +1,33 @@
+mydotfiles shortcuts — run: dots
+
+Git aliases (git <alias>)
+  st status     co checkout   sw switch   br branch
+  ci commit     last          lg graph    amend
+
+Fuzzy git
+  gsw   fzf + git switch
+  gco   fzf + git checkout
+
+fzf (Linux/WSL)
+  Ctrl-R  history    Ctrl-T  file    Alt-C  directory
+
+Navigation
+  z <query>   zoxide jump
+  zi          zoxide interactive
+
+Search
+  rg <pat>    ripgrep (smart-case, hidden; skips .git)
+  fd <pat>    find files (gitignore-aware)
+
+Git pager
+  delta       used automatically via gitconfig
+
+Editor / pager
+  $EDITOR     preferred-editor (Cursor → Antigravity → VS Code → nvim/vim/vi)
+  PAGER       less -FRX when available
+
+SSH
+  setup-ssh [--gh] [--gl] [--copy host] [--identity path]
+
+Bootstrap
+  ./bootstrap.sh | .\bootstrap.ps1   [-Ssh|--ssh] [-SkipWsl]

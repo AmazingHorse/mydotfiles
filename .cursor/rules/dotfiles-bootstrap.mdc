@@ -19,7 +19,7 @@ Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 ## Dependencies / ABI
 - Pin self-installed bins in `.chezmoidata.toml`; float apt (`zsh`, `fzf`, …).
 - Preferred + floor when PPAs lag: `git` + `git_minimum` (≥ 2.35 / `zdiff3`). Ubuntu 20.04 git-core PPA ~2.50 max.
-- Pins: `chezmoi`, `oh_my_posh`, `git`, `git_minimum` — bump in data file only.
+- Pins: `chezmoi`, `oh_my_posh`, `zoxide`, `ripgrep`, `fd`, `git_delta`, `git`, `git_minimum` — bump in data file only.
 - New pin: data → installer → soft-fail guard → CI asset check.
 - **glibc floor:** Go/CGO release builds from Ubuntu 22.04+ need `GLIBC_2.32`/`2.34`. Ubuntu 20.04 (2.31) fails with `version GLIBC_2.3x not found`. Prefer/detect musl (static) or older-compatible assets; do not assume `*-linux-amd64` / `*-glibc*` runs everywhere.
 - Chezmoi amd64: musl on musl hosts **or** when host glibc < 2.32; else `linux-glibc`. Verify `--version` after extract; retry musl on linker errors.
@@ -31,5 +31,5 @@ Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 - Outer “bootstrap failed” = child exit only — `bash -x` / PS trace in-target.
 
 ## Backlog
-- Later: pinned `direnv`/`mise`; optional PM `IdentityAgent`; richer fzf helpers.
+- Later: pinned `direnv`/`mise`; optional PM `IdentityAgent`; richer fzf helpers; `navi` if `dots` outgrows a static sheet.
 - Skip: plugin frameworks, package sprawl, in-repo keys, secret sync.

@@ -13,6 +13,23 @@ fi
 export PAGER="${PAGER:-less}"
 export LESS="${LESS:--FRX}"
 
+if [ -f "$HOME/.config/ripgrep/config" ]; then
+    export RIPGREP_CONFIG_PATH="$HOME/.config/ripgrep/config"
+fi
+
+dots() {
+    local cheatsheet_path="$HOME/.config/mydotfiles/cheatsheet"
+    if [ ! -f "${cheatsheet_path}" ]; then
+        printf 'dots: cheatsheet missing at %s (run chezmoi apply)\n' "${cheatsheet_path}" >&2
+        return 1
+    fi
+    if [ -t 1 ] && command -v less >/dev/null 2>&1; then
+        less -FRX "${cheatsheet_path}"
+    else
+        cat "${cheatsheet_path}"
+    fi
+}
+
 git_fuzzy_branch() {
     local git_command="$1"
 

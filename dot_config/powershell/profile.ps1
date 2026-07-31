@@ -117,6 +117,25 @@ function Invoke-GitFuzzySwitch {
 function gsw { Invoke-GitFuzzySwitch -GitCommand switch }
 function gco { Invoke-GitFuzzySwitch -GitCommand checkout }
 
+function dots {
+    $CheatsheetPath = Join-Path $HOME '.config\mydotfiles\cheatsheet'
+    if (-not (Test-Path -LiteralPath $CheatsheetPath)) {
+        Write-Warning "dots: cheatsheet missing at $CheatsheetPath (run chezmoi apply)"
+        return
+    }
+
+    Get-Content -LiteralPath $CheatsheetPath
+}
+
+$RipgrepConfigPath = Join-Path $HOME '.config\ripgrep\config'
+if (Test-Path -LiteralPath $RipgrepConfigPath) {
+    $env:RIPGREP_CONFIG_PATH = $RipgrepConfigPath
+}
+
+if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    Invoke-Expression (& { (zoxide init powershell | Out-String) })
+}
+
 $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
 if (-not $OhMyPoshCommand) {
     Write-Warning 'Oh My Posh is not installed. Run the dotfiles bootstrap to install it.'

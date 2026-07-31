@@ -138,4 +138,43 @@ for url in "${chezmoi_checksums_url}" "${chezmoi_glibc_url}" "${chezmoi_musl_url
     esac
 done
 
+echo "==> Verify pinned Tier-1 CLI release assets"
+read_pin() {
+    local pin_name="$1"
+    awk -F'"' -v pin_name="${pin_name}" \
+        '$0 ~ ("^" pin_name "[[:space:]]*=") { print $2; exit }' .chezmoidata.toml
+}
+
+zoxide_version="$(read_pin zoxide)"
+ripgrep_version="$(read_pin ripgrep)"
+fd_version="$(read_pin fd)"
+git_delta_version="$(read_pin git_delta)"
+for required_pin in \
+    zoxide_version \
+    ripgrep_version \
+    fd_version \
+    git_delta_version; do
+    if [ -z "${!required_pin}" ]; then
+        echo "Could not read packages pin for ${required_pin}" >&2
+        exit 1
+    fi
+done
+
+tier1_urls=(
+    "https://github.com/ajeetdsouza/zoxide/releases/download/v${zoxide_version}/zoxide-${zoxide_version}-x86_64-unknown-linux-musl.tar.gz"
+    "https://github.com/BurntSushi/ripgrep/releases/download/${ripgrep_version}/ripgrep-${ripgrep_version}-x86_64-unknown-linux-musl.tar.gz"
+    "https://github.com/sharkdp/fd/releases/download/v${fd_version}/fd-v${fd_version}-x86_64-unknown-linux-musl.tar.gz"
+    "https://github.com/dandavison/delta/releases/download/${git_delta_version}/delta-${git_delta_version}-x86_64-unknown-linux-musl.tar.gz"
+)
+for url in "${tier1_urls[@]}"; do
+    http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
+    case "${http_status}" in
+        200|302) ;;
+        *)
+            echo "Pinned Tier-1 asset not reachable (${http_status}): ${url}" >&2
+            exit 1
+            ;;
+    esac
+done
+
 echo "==> CI checks passed"

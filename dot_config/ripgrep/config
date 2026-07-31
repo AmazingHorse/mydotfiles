@@ -1,0 +1,4 @@
+# Shared ripgrep defaults (RIPGREP_CONFIG_PATH points here).
+--smart-case
+--hidden
+--glob=!.git/

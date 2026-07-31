@@ -9,6 +9,7 @@
     editor = preferred-editor
 {{- end }}
     excludesFile = ~/.config/git/ignore
+    pager = delta
 
 [init]
     defaultBranch = main
@@ -26,6 +27,13 @@
 [diff]
     algorithm = histogram
     colorMoved = default
+
+[interactive]
+    diffFilter = delta --color-only
+
+[delta]
+    navigate = true
+    line-numbers = true
 
 [commit]
     verbose = true

@@ -5,6 +5,10 @@ $ErrorActionPreference = 'Stop'
 
 $PinnedOhMyPoshVersion = '{{ .packages.oh_my_posh }}'
 $PinnedGitVersion = '{{ .packages.git }}'
+$PinnedZoxideVersion = '{{ .packages.zoxide }}'
+$PinnedRipgrepVersion = '{{ .packages.ripgrep }}'
+$PinnedFdVersion = '{{ .packages.fd }}'
+$PinnedGitDeltaVersion = '{{ .packages.git_delta }}'
 
 function Get-OhMyPoshInstalledVersion {
     $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
@@ -128,23 +132,35 @@ function Ensure-PinnedGit {
 function Ensure-WingetPackagePresent {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$PackageId
+        [string]$PackageId,
+
+        [string]$PinnedVersion
     )
 
     $installedPackages = winget list --id $PackageId --accept-source-agreements 2>$null
     if ($LASTEXITCODE -eq 0 -and ($installedPackages -match [regex]::Escape($PackageId))) {
-        Write-Host "Already installed: $PackageId"
-        return
+        if (-not $PinnedVersion -or ($installedPackages -match [regex]::Escape($PinnedVersion))) {
+            Write-Host "Already installed: $PackageId$(if ($PinnedVersion) { " $PinnedVersion" })"
+            return
+        }
     }
 
-    Write-Host "Installing: $PackageId"
-    winget install `
-        --id $PackageId `
-        --exact `
-        --silent `
-        --accept-package-agreements `
-        --accept-source-agreements `
-        --source winget
+    Write-Host "Installing: $PackageId$(if ($PinnedVersion) { " $PinnedVersion" })"
+    $WingetArguments = @(
+        'install'
+        '--id', $PackageId
+        '--exact'
+        '--silent'
+        '--accept-package-agreements'
+        '--accept-source-agreements'
+        '--source', 'winget'
+    )
+    if ($PinnedVersion) {
+        $WingetArguments += @('--version', $PinnedVersion, '--force')
+    }
+
+    winget @WingetArguments
+    Refresh-ProcessPathFromMachineAndUser
 }
 
 Ensure-PinnedGit -PinnedVersion $PinnedGitVersion
@@ -153,8 +169,12 @@ Ensure-PinnedOhMyPosh -PinnedVersion $PinnedOhMyPoshVersion
 if (Get-Command winget -ErrorAction SilentlyContinue) {
     Ensure-WingetPackagePresent -PackageId 'GitHub.cli'
     Ensure-WingetPackagePresent -PackageId 'junegunn.fzf'
+    Ensure-WingetPackagePresent -PackageId 'ajeetdsouza.zoxide' -PinnedVersion $PinnedZoxideVersion
+    Ensure-WingetPackagePresent -PackageId 'BurntSushi.ripgrep.MSVC' -PinnedVersion $PinnedRipgrepVersion
+    Ensure-WingetPackagePresent -PackageId 'sharkdp.fd' -PinnedVersion $PinnedFdVersion
+    Ensure-WingetPackagePresent -PackageId 'dandavison.delta' -PinnedVersion $PinnedGitDeltaVersion
 } else {
-    Write-Warning 'winget not found; install GitHub CLI / fzf manually if needed.'
+    Write-Warning 'winget not found; install GitHub CLI / fzf / Tier-1 CLIs manually if needed.'
 }
 
 $LocalBinDirectory = Join-Path $HOME '.local\bin'

@@ -57,34 +57,21 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 
 ## What you get
 
-- Oh My Posh + Everforest theme; PowerShell 7 profile
-- zsh/bash startup + shared helpers
-- preferred editor: Cursor → Antigravity → VS Code → nvim/vim/vi
-- gentle terminal bell (Windows Terminal)
-- Git defaults, aliases, machine-local identity
+- Oh My Posh + Everforest; PowerShell 7 profile
+- zsh/bash + shared helpers; preferred-editor chain
+- `zoxide`, `rg`, `fd`, `delta` (pinned); `fzf` helpers
+- Git defaults + machine-local identity
 - shared `~/.ssh/config` (no private keys)
-- prompt/shell package bootstrap
 
-Pinned tool versions live in `.chezmoidata.toml` (chezmoi, Oh My Posh, Git).
+Pinned versions: `.chezmoidata.toml`. In-shell cheat sheet: **`dots`**
+(same command in zsh/bash and PowerShell).
 
-## Git
+## Git identity
 
 Chezmoi prompts for name/email **per machine**. Overrides go in unmanaged
-`~/.gitconfig.local` (included last). Credentials and signing are not managed.
+`~/.gitconfig.local` (included last).
 
-### Aliases (`git <alias>`)
-
-- `st` → status · `co` → checkout · `sw` → switch · `br` → branch
-- `ci` → commit · `last` → latest commit · `lg` → recent graph · `amend`
-
-### Fuzzy helpers
-
-- `gsw` / `gco` — pick a branch with `fzf`, then switch/checkout
-- Linux/WSL `fzf` keys: `Ctrl-R` history, `Ctrl-T` file, `Alt-C` directory
-
-### Per-folder email
-
-In `~/.gitconfig.local`:
+Per-folder email example:
 
 ```gitconfig
 [includeIf "gitdir:~/work/"]
@@ -97,8 +84,8 @@ In `~/.gitconfig.local`:
     email = you@company.com
 ```
 
-On Windows use forward slashes and an absolute `gitdir:` path
-(e.g. `gitdir:C:/Users/you/work/`). Trailing slash matches that tree.
+On Windows use forward slashes and an absolute `gitdir:`
+(e.g. `gitdir:C:/Users/you/work/`).
 
 ## SSH
 
@@ -110,22 +97,14 @@ Private keys are never in this repo.
   `config.d/private.conf` and keeps `config.pre-chezmoi.bak`
 
 ```bash
-./setup-ssh.sh
-./setup-ssh.sh --gh --gl
-./setup-ssh.sh --copy ansible.gbtel.ca --copy backup.gbtel.ca
-./setup-ssh.sh --identity ~/.ssh/business_ed25519 --gh --gl --copy ansible.gbtel.ca
+./setup-ssh.sh --gh --gl --copy ansible.gbtel.ca
 ```
 
 ```powershell
-.\setup-ssh.ps1
-.\setup-ssh.ps1 -Gh -Gl
-.\setup-ssh.ps1 -Copy ansible.gbtel.ca,backup.gbtel.ca
-.\setup-ssh.ps1 -Identity ~/.ssh/business_ed25519 -Gh -Gl -Copy ansible.gbtel.ca
+.\setup-ssh.ps1 -Gh -Gl -Copy ansible.gbtel.ca
 ```
 
-Default key `~/.ssh/id_ed25519`. `--gh`/`-Gh` = GitHub CLI, `--gl`/`-Gl` =
-GitLab CLI, `--copy`/`-Copy` = `ssh-copy-id` or portable `authorized_keys`
-append.
+Default key `~/.ssh/id_ed25519`. See `dots` or `--help` for flags.
 
 ## History note
 

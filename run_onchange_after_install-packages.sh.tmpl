@@ -5,6 +5,10 @@ set -euo pipefail
 preferred_oh_my_posh_version='{{ .packages.oh_my_posh }}'
 preferred_git_version='{{ .packages.git }}'
 minimum_git_version='{{ .packages.git_minimum }}'
+preferred_zoxide_version='{{ .packages.zoxide }}'
+preferred_ripgrep_version='{{ .packages.ripgrep }}'
+preferred_fd_version='{{ .packages.fd }}'
+preferred_git_delta_version='{{ .packages.git_delta }}'
 
 if ! command -v apt-get >/dev/null 2>&1; then
     echo "Skipping package install: apt-get not found." >&2
@@ -12,6 +16,10 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+install_directory="${HOME}/.local/bin"
+cache_directory="${HOME}/.cache/mydotfiles/downloads"
+mkdir -p "${install_directory}" "${cache_directory}"
+export PATH="${install_directory}:${PATH}"
 
 version_ge() {
     local left_version="$1"
@@ -79,10 +87,116 @@ ensure_modern_git() {
     fi
 }
 
-ensure_pinned_oh_my_posh() {
-    local install_directory="${HOME}/.local/bin"
-    mkdir -p "${install_directory}"
+download_with_retries() {
+    local destination_path="$1"
+    local source_url="$2"
+    local attempt=1
+    local partial_path="${destination_path}.partial"
 
+    while [ "${attempt}" -le 5 ]; do
+        echo "Downloading ${source_url} (attempt ${attempt}/5)..."
+        if curl \
+            --fail \
+            --location \
+            --connect-timeout 20 \
+            --max-time 300 \
+            --output "${partial_path}" \
+            "${source_url}"; then
+            mv "${partial_path}" "${destination_path}"
+            return 0
+        fi
+        rm -f "${partial_path}"
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    echo "Failed to download ${source_url} after 5 attempts." >&2
+    return 1
+}
+
+linux_musl_target_triple() {
+    local architecture
+    architecture="$(uname -m)"
+    case "${architecture}" in
+        x86_64|amd64)
+            printf 'x86_64-unknown-linux-musl\n'
+            ;;
+        aarch64|arm64)
+            printf 'aarch64-unknown-linux-musl\n'
+            ;;
+        *)
+            echo "Unsupported architecture: ${architecture}" >&2
+            return 1
+            ;;
+    esac
+}
+
+delta_linux_target_triple() {
+    local architecture
+    architecture="$(uname -m)"
+    case "${architecture}" in
+        x86_64|amd64)
+            # musl build avoids GLIBC_2.32+ requirements on Ubuntu 20.04.
+            printf 'x86_64-unknown-linux-musl\n'
+            ;;
+        aarch64|arm64)
+            # Upstream ships gnu-only for arm64.
+            printf 'aarch64-unknown-linux-gnu\n'
+            ;;
+        *)
+            echo "Unsupported architecture: ${architecture}" >&2
+            return 1
+            ;;
+    esac
+}
+
+install_pinned_tarball_binary() {
+    local tool_name="$1"
+    local pinned_version="$2"
+    local archive_url="$3"
+    local binary_name="$4"
+    local version_pattern="$5"
+
+    local target_path="${install_directory}/${binary_name}"
+    if command -v "${binary_name}" >/dev/null 2>&1; then
+        local installed_version_output
+        installed_version_output="$("${binary_name}" --version 2>/dev/null | head -n1 || true)"
+        if [[ "${installed_version_output}" == *"${version_pattern}"* ]]; then
+            echo "${tool_name} already at pinned version ${pinned_version}"
+            return 0
+        fi
+    fi
+
+    local work_directory
+    work_directory="$(mktemp -d "${cache_directory}/${tool_name}.XXXXXX")"
+    local archive_path="${work_directory}/archive.tar.gz"
+
+    download_with_retries "${archive_path}" "${archive_url}"
+    tar -xzf "${archive_path}" -C "${work_directory}"
+
+    local extracted_binary
+    extracted_binary="$(find "${work_directory}" -type f -name "${binary_name}" | head -n1)"
+    if [ -z "${extracted_binary}" ] || [ ! -f "${extracted_binary}" ]; then
+        echo "${tool_name} binary '${binary_name}' missing from archive." >&2
+        rm -rf "${work_directory}"
+        exit 1
+    fi
+
+    chmod 755 "${extracted_binary}"
+    mv "${extracted_binary}" "${target_path}"
+    rm -rf "${work_directory}"
+
+    local installed_version_output
+    installed_version_output="$("${target_path}" --version 2>/dev/null | head -n1 || true)"
+    if [[ "${installed_version_output}" != *"${version_pattern}"* ]]; then
+        echo "${tool_name} install finished, but version is '${installed_version_output}' (expected '${pinned_version}')" >&2
+        exit 1
+    fi
+
+    echo "${tool_name} installed at pinned version ${pinned_version}"
+}
+
+ensure_pinned_oh_my_posh() {
     local architecture
     architecture="$(uname -m)"
     local oh_my_posh_asset
@@ -115,7 +229,7 @@ ensure_pinned_oh_my_posh() {
     temporary_path="$(mktemp)"
 
     echo "Installing pinned Oh My Posh ${preferred_oh_my_posh_version} from ${download_url}"
-    curl -fsSL "${download_url}" -o "${temporary_path}"
+    download_with_retries "${temporary_path}" "${download_url}"
     chmod 755 "${temporary_path}"
     mv "${temporary_path}" "${target_path}"
 
@@ -124,6 +238,41 @@ ensure_pinned_oh_my_posh() {
         echo "Oh My Posh install finished, but version is '${installed_oh_my_posh_version}' (expected '${preferred_oh_my_posh_version}')" >&2
         exit 1
     fi
+}
+
+ensure_pinned_cli_tools() {
+    local musl_target
+    local delta_target
+    musl_target="$(linux_musl_target_triple)"
+    delta_target="$(delta_linux_target_triple)"
+
+    install_pinned_tarball_binary \
+        'zoxide' \
+        "${preferred_zoxide_version}" \
+        "https://github.com/ajeetdsouza/zoxide/releases/download/v${preferred_zoxide_version}/zoxide-${preferred_zoxide_version}-${musl_target}.tar.gz" \
+        'zoxide' \
+        "${preferred_zoxide_version}"
+
+    install_pinned_tarball_binary \
+        'ripgrep' \
+        "${preferred_ripgrep_version}" \
+        "https://github.com/BurntSushi/ripgrep/releases/download/${preferred_ripgrep_version}/ripgrep-${preferred_ripgrep_version}-${musl_target}.tar.gz" \
+        'rg' \
+        "${preferred_ripgrep_version}"
+
+    install_pinned_tarball_binary \
+        'fd' \
+        "${preferred_fd_version}" \
+        "https://github.com/sharkdp/fd/releases/download/v${preferred_fd_version}/fd-v${preferred_fd_version}-${musl_target}.tar.gz" \
+        'fd' \
+        "${preferred_fd_version}"
+
+    install_pinned_tarball_binary \
+        'git-delta' \
+        "${preferred_git_delta_version}" \
+        "https://github.com/dandavison/delta/releases/download/${preferred_git_delta_version}/delta-${preferred_git_delta_version}-${delta_target}.tar.gz" \
+        'delta' \
+        "${preferred_git_delta_version}"
 }
 
 sudo apt-get update
@@ -137,4 +286,5 @@ sudo apt-get install -y \
 
 ensure_modern_git
 ensure_pinned_oh_my_posh
+ensure_pinned_cli_tools
 {{ end -}}

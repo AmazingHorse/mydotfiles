@@ -1,14 +1,18 @@
 # Pinned binary versions managed by bootstrap/apply scripts.
-# Bump deliberately. Shell profiles refuse mismatched installs.
+# Bump deliberately. Shell profiles refuse mismatched Oh My Posh installs.
 #
 # Add new pins here when introducing a third-party binary feature:
 #   1. packages.<name> = "x.y.z"
 #   2. run_onchange_* installer uses the pin
-#   3. shell/profile guard checks the pin (or expected-version file)
+#   3. shell/profile soft-fail / init (strict match only where noted)
 
 [packages]
 oh_my_posh = "24.8.0"
 chezmoi = "2.71.1"
+zoxide = "0.10.0"
+ripgrep = "15.2.0"
+fd = "10.4.2"
+git_delta = "0.19.2"
 # Preferred Git across platforms (Windows winget + newer Ubuntu PPAs).
 # Ubuntu 20.04's git-core PPA currently tops out around 2.50.x, so Linux
 # accepts the newest PPA build that still meets git_minimum (zdiff3 floor).
