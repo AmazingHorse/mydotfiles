@@ -26,10 +26,10 @@ Or from a checkout:
 .\bootstrap.ps1 -SkipWsl      # Windows only
 ```
 
-On a cold WSL start with systemd enabled, `bootstrap.ps1` waits until the
-distro reports `running`/`degraded` (or a non-systemd ready state) before
-running the Linux bootstrap. `bootstrap.sh` also waits internally and clears
-an unusable `XDG_RUNTIME_DIR`.
+On a cold WSL start, `bootstrap.ps1` uses individually bounded probes until
+the distro accepts commands. If first-run setup is incomplete, it times out
+with instructions to open the distro manually. `bootstrap.sh` handles the
+systemd wait internally and clears an unusable `XDG_RUNTIME_DIR`.
 
 ### Linux / WSL
 

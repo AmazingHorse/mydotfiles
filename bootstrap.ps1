@@ -29,37 +29,46 @@ function Install-ChezmoiIfMissing {
         [System.Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
-function Get-WslDistroReadinessState {
+function Test-WslExecReady {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$DistroName
+        [string]$DistroName,
+
+        [int]$ProbeTimeoutSeconds = 10
     )
 
-    $ProbeScript = @'
-if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
-    systemctl is-system-running 2>/dev/null || true
-else
-    printf 'ready\n'
-fi
-'@
+    $StartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $StartInfo.FileName = 'wsl.exe'
+    $StartInfo.UseShellExecute = $false
+    $StartInfo.CreateNoWindow = $true
+    $StartInfo.RedirectStandardInput = $true
+    $StartInfo.RedirectStandardOutput = $true
+    $StartInfo.RedirectStandardError = $true
+    foreach ($Argument in @('-d', $DistroName, '--', '/bin/true')) {
+        $StartInfo.ArgumentList.Add($Argument)
+    }
 
-    $PreviousErrorAction = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
+    $ProbeProcess = $null
     try {
-        $StateOutput = & wsl.exe -d $DistroName -- bash --noprofile --norc -c $ProbeScript 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            return 'unavailable'
+        $ProbeProcess = [System.Diagnostics.Process]::Start($StartInfo)
+        if ($ProbeProcess.WaitForExit($ProbeTimeoutSeconds * 1000)) {
+            return $ProbeProcess.ExitCode -eq 0
         }
+
+        try {
+            $ProbeProcess.Kill($true)
+            $ProbeProcess.WaitForExit()
+        } catch {
+            # The process may exit between the timeout and termination request.
+        }
+        return $false
+    } catch {
+        return $false
     } finally {
-        $ErrorActionPreference = $PreviousErrorAction
+        if ($ProbeProcess) {
+            $ProbeProcess.Dispose()
+        }
     }
-
-    $StateText = (($StateOutput | Out-String) -replace "`0", '').Trim()
-    if ([string]::IsNullOrWhiteSpace($StateText)) {
-        return 'unknown'
-    }
-
-    return ($StateText -split '\r?\n' | Select-Object -Last 1).Trim()
 }
 
 function Wait-WslDistroReady {
@@ -70,28 +79,18 @@ function Wait-WslDistroReady {
         [int]$TimeoutSeconds = 120
     )
 
-    Write-Host "Waiting for WSL distro '$DistroName' to finish starting..."
+    Write-Host "Waiting for WSL distro '$DistroName' to accept commands..."
     $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 
     while ((Get-Date) -lt $Deadline) {
-        $State = Get-WslDistroReadinessState -DistroName $DistroName
-        switch -Regex ($State) {
-            '^(running|degraded|ready)$' {
-                Write-Host "WSL distro '$DistroName' is ready ($State)."
-                return
-            }
-            '^(initializing|starting)$' {
-                Start-Sleep -Seconds 2
-                continue
-            }
-            default {
-                Start-Sleep -Seconds 2
-                continue
-            }
+        if (Test-WslExecReady -DistroName $DistroName) {
+            Write-Host "WSL distro '$DistroName' is accepting commands."
+            return
         }
+        Start-Sleep -Seconds 2
     }
 
-    throw "Timed out waiting for WSL distro '$DistroName' to become ready."
+    throw "Timed out waiting for WSL distro '$DistroName'. Open it once with 'wsl -d $DistroName', complete first-run setup, then retry."
 }
 
 function Invoke-WslBootstrap {
