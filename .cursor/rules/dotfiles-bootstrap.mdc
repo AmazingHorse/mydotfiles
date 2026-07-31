@@ -10,9 +10,9 @@ Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 ## Architecture
 - Declarative first (`dot_*`, `private_*`, `dot_config/...`); scripts last.
 - `run_once_*` / `run_onchange_*`: small, idempotent; packages/migrations only.
-- One bootstrap style: `bootstrap.ps1` / `bootstrap.sh` → tool → init/apply|update → optional SSH.
+- One bootstrap style: `bootstrap.ps1` / `bootstrap.sh` → tool → init/apply|update → optional SSH. Local checkouts should link `~/.local/share/chezmoi` → the repo (junction/symlink) so bare `chezmoi apply` works without `--source`.
 - Ship Linux + Windows unless OS-specific; templates only for real diffs.
-- Secrets local (`config.d`, chezmoi config). Migrations backup first (`run_once_*`).
+- Migrations that touch existing user files must backup first and be `run_once_*`. SSH migrate must be CRLF-safe and **never** copy an `Include config.d/...` into `config.d/private.conf` (infinite recursion).
 - Profiles soft-fail on missing/mismatched bins — never `eval` broken init.
 - Ensure `~/.local/bin` on PATH before relying on user-installed tools.
 

@@ -191,6 +191,16 @@ Install-ChezmoiIfMissing
 
 if ((Test-Path -LiteralPath (Join-Path $ScriptDirectory 'dot_config')) -and (Test-Path -LiteralPath (Join-Path $ScriptDirectory '.chezmoiignore'))) {
     Write-Host "Using local checkout: $ScriptDirectory"
+    # Bare `chezmoi apply` defaults to ~/.local/share/chezmoi. Point that at
+    # this checkout so day-to-day commands work without --source every time.
+    $DefaultSourceParent = Split-Path -Parent $ChezmoiSourceDirectory
+    if (-not (Test-Path -LiteralPath $DefaultSourceParent)) {
+        New-Item -ItemType Directory -Force -Path $DefaultSourceParent | Out-Null
+    }
+    if (-not (Test-Path -LiteralPath $ChezmoiSourceDirectory)) {
+        New-Item -ItemType Junction -Path $ChezmoiSourceDirectory -Target $ScriptDirectory | Out-Null
+        Write-Host "Linked $ChezmoiSourceDirectory -> $ScriptDirectory"
+    }
     & chezmoi init --source $ScriptDirectory
     & chezmoi apply --source $ScriptDirectory
     $ActiveSourceDirectory = $ScriptDirectory

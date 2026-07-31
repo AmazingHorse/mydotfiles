@@ -6,12 +6,63 @@ $SshConfigPath = Join-Path $SshDirectory 'config'
 $PrivateConfigDirectory = Join-Path $SshDirectory 'config.d'
 $PrivateConfigPath = Join-Path $PrivateConfigDirectory 'private.conf'
 
+function Test-SshConfigIncludesConfigD {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+
+    foreach ($Line in (Get-Content -LiteralPath $Path)) {
+        $NormalizedLine = $Line.TrimEnd("`r")
+        if ($NormalizedLine -match '^\s*Include\s+.*config\.d([/\\]|\s|$)') {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Write-SshConfigWithoutConfigDIncludes {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourcePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath
+    )
+
+    $FilteredLines = Get-Content -LiteralPath $SourcePath | Where-Object {
+        $NormalizedLine = $_.TrimEnd("`r")
+        -not ($NormalizedLine -match '^\s*Include\s+.*config\.d([/\\]|\s|$)')
+    }
+    Set-Content -LiteralPath $DestinationPath -Value $FilteredLines -Encoding utf8
+}
+
+function Write-PrivateConfigStub {
+    @(
+        '# Machine-local SSH hosts only.'
+        '# Do not add "Include config.d/..." here — ~/.ssh/config already includes this directory.'
+    ) | Set-Content -LiteralPath $PrivateConfigPath -Encoding utf8
+}
+
 if (-not (Test-Path -LiteralPath $SshConfigPath -PathType Leaf)) {
     exit 0
 }
 
-$ExistingConfigLines = Get-Content -LiteralPath $SshConfigPath
-if ($ExistingConfigLines -contains 'Include config.d/*.conf') {
+if (Test-SshConfigIncludesConfigD -Path $SshConfigPath) {
+    if ((Test-Path -LiteralPath $PrivateConfigPath -PathType Leaf) -and
+        (Test-SshConfigIncludesConfigD -Path $PrivateConfigPath)) {
+        $Timestamp = Get-Date -Format 'yyyyMMddHHmmss'
+        $RepairPath = "${PrivateConfigPath}.recurse-bak.${Timestamp}"
+        Copy-Item -LiteralPath $PrivateConfigPath -Destination $RepairPath
+        Write-PrivateConfigStub
+        Write-Warning "Removed recursive Include from $PrivateConfigPath"
+        Write-Warning "Previous broken file saved as $RepairPath"
+        Write-Warning 'Restore hosts from *.pre-chezmoi.bak* or another machine if needed.'
+    }
     exit 0
 }
 
@@ -28,11 +79,23 @@ $PrivateConfigExists = Test-Path -LiteralPath $PrivateConfigPath -PathType Leaf
 $PrivateConfigHasContent = $PrivateConfigExists -and
     ((Get-Item -LiteralPath $PrivateConfigPath).Length -gt 0)
 if ($PrivateConfigHasContent) {
+    if (Test-SshConfigIncludesConfigD -Path $PrivateConfigPath) {
+        $Timestamp = Get-Date -Format 'yyyyMMddHHmmss'
+        $RepairPath = "${PrivateConfigPath}.recurse-bak.${Timestamp}"
+        Copy-Item -LiteralPath $PrivateConfigPath -Destination $RepairPath
+        Write-SshConfigWithoutConfigDIncludes -SourcePath $BackupPath -DestinationPath $PrivateConfigPath
+        if ((Test-SshConfigIncludesConfigD -Path $PrivateConfigPath) -or
+            ((Get-Item -LiteralPath $PrivateConfigPath).Length -eq 0)) {
+            Write-PrivateConfigStub
+        }
+        Write-Warning "Repaired recursive Include in $PrivateConfigPath; previous saved as $RepairPath"
+        exit 0
+    }
     Write-Warning "Existing $PrivateConfigPath preserved; merge $BackupPath manually."
     exit 0
 }
 
-Copy-Item -LiteralPath $SshConfigPath -Destination $PrivateConfigPath
+Write-SshConfigWithoutConfigDIncludes -SourcePath $SshConfigPath -DestinationPath $PrivateConfigPath
 Write-Host "Migrated existing SSH config to $PrivateConfigPath"
 Write-Host "Backup saved to $BackupPath"
 {{ end -}}

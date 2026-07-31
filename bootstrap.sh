@@ -296,6 +296,14 @@ install_chezmoi
 
 if [ -f "$SCRIPT_DIRECTORY/dot_zshrc" ] && [ -f "$SCRIPT_DIRECTORY/.chezmoiignore" ]; then
     echo "Using local checkout: $SCRIPT_DIRECTORY"
+    # Bare `chezmoi apply` defaults to ~/.local/share/chezmoi. Point that at
+    # this checkout so day-to-day commands work without --source every time.
+    default_source_directory="${HOME}/.local/share/chezmoi"
+    mkdir -p "$(dirname "${default_source_directory}")"
+    if [ ! -e "${default_source_directory}" ]; then
+        ln -s "${SCRIPT_DIRECTORY}" "${default_source_directory}"
+        echo "Linked ${default_source_directory} -> ${SCRIPT_DIRECTORY}"
+    fi
     chezmoi init --source="$SCRIPT_DIRECTORY"
     chezmoi apply --source="$SCRIPT_DIRECTORY"
 elif [ -d "$HOME/.local/share/chezmoi/.git" ]; then

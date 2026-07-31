@@ -86,6 +86,25 @@ if [ "$(cat "${migration_home}/.ssh/id_ed25519")" != 'private-key-sentinel' ]; t
     exit 1
 fi
 
+echo "==> Verify SSH migration does not recurse managed Include"
+recurse_home="${destination_directory}/recurse-home"
+mkdir -p "${recurse_home}/.ssh/config.d"
+# Simulate CRLF managed config already applied, empty/missing real private hosts.
+printf '%s\r\n' \
+    '# Private / sensitive hosts first so they win over defaults below.' \
+    'Include config.d/*.conf' \
+    '' \
+    'Host *' \
+    '    IdentitiesOnly yes' \
+    > "${recurse_home}/.ssh/config"
+cp "${recurse_home}/.ssh/config" "${recurse_home}/.ssh/config.d/private.conf"
+HOME="${recurse_home}" bash "${rendered_migration_script}" >/dev/null
+if grep -Eq '^[[:space:]]*Include[[:space:]].*config\.d' \
+    "${recurse_home}/.ssh/config.d/private.conf"; then
+    echo "SSH migration left a recursive Include in private.conf" >&2
+    exit 1
+fi
+
 echo "==> Verify template data"
 rendered_identity="$(chezmoi execute-template '{{ .gitName }} <{{ .gitEmail }}>')"
 if [ "${rendered_identity}" != 'CI User <ci@example.com>' ]; then
