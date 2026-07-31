@@ -3,3 +3,8 @@
 
 [tools]
 python = "{{ .packages.python }}"
+
+[env]
+# Host tooling (and some IDEs) still launch Windows PowerShell 5.1, where mise
+# chpwd is unsupported. Real interactive use is pwsh 7+ with activate gated there.
+MISE_PWSH_CHPWD_WARNING = "0"
