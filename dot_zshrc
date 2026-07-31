@@ -53,6 +53,10 @@ if command -v zoxide >/dev/null 2>&1; then
     eval "$(zoxide init zsh)"
 fi
 
+if command -v mise >/dev/null 2>&1; then
+    eval "$(mise activate zsh)"
+fi
+
 expected_oh_my_posh_version_file="$HOME/.config/oh-my-posh/expected-version"
 if command -v oh-my-posh >/dev/null 2>&1 && [ -f "$expected_oh_my_posh_version_file" ]; then
     expected_oh_my_posh_version="$(tr -d '[:space:]' < "$expected_oh_my_posh_version_file")"

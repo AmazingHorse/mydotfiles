@@ -17,6 +17,13 @@ Navigation (zoxide)
   zi             interactive picker (also uses fzf if present)
   (no cd override — plain cd still works)
 
+Tool versions (mise)
+  mise ls / mise ls-remote <tool>
+  mise use -g python@3.12     (global default already pinned)
+  mise install                install tools from config / mise.toml
+  mise exec -- <cmd>          run with project tool versions
+  Project repos own Flipper/ufbt/firmware — not this dotfiles repo
+
 Search
   rg TODO                    content search (smart-case, hidden, skip .git)
   rg -t py HTTPError         by type

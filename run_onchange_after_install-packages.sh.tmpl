@@ -5,6 +5,7 @@ set -euo pipefail
 preferred_oh_my_posh_version='{{ .packages.oh_my_posh }}'
 preferred_git_version='{{ .packages.git }}'
 minimum_git_version='{{ .packages.git_minimum }}'
+preferred_mise_version='{{ .packages.mise }}'
 preferred_zoxide_version='{{ .packages.zoxide }}'
 preferred_ripgrep_version='{{ .packages.ripgrep }}'
 preferred_fd_version='{{ .packages.fd }}'
@@ -243,8 +244,30 @@ ensure_pinned_oh_my_posh() {
 ensure_pinned_cli_tools() {
     local musl_target
     local delta_target
+    local mise_arch
+    local architecture
     musl_target="$(linux_musl_target_triple)"
     delta_target="$(delta_linux_target_triple)"
+    architecture="$(uname -m)"
+    case "${architecture}" in
+        x86_64|amd64)
+            mise_arch='linux-x64-musl'
+            ;;
+        aarch64|arm64)
+            mise_arch='linux-arm64-musl'
+            ;;
+        *)
+            echo "Unsupported architecture for mise: ${architecture}" >&2
+            exit 1
+            ;;
+    esac
+
+    install_pinned_tarball_binary \
+        'mise' \
+        "${preferred_mise_version}" \
+        "https://github.com/jdx/mise/releases/download/v${preferred_mise_version}/mise-v${preferred_mise_version}-${mise_arch}.tar.gz" \
+        'mise' \
+        "${preferred_mise_version}"
 
     install_pinned_tarball_binary \
         'zoxide' \

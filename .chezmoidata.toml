@@ -9,6 +9,10 @@
 [packages]
 oh_my_posh = "24.8.0"
 chezmoi = "2.71.1"
+mise = "2026.7.18"
+# Default language toolchain for project scaffolding (Flipper/ufbt, etc.
+# live in separate repos; they consume this via mise.toml / pip).
+python = "3.12"
 zoxide = "0.10.0"
 ripgrep = "15.2.0"
 fd = "10.4.2"

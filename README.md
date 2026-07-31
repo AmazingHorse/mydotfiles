@@ -59,12 +59,15 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 
 - Oh My Posh + Everforest; PowerShell 7 profile
 - zsh/bash + shared helpers; preferred-editor chain
-- `zoxide`, `rg`, `fd`, `delta` (pinned); `fzf` helpers
+- `zoxide`, `rg`, `fd`, `delta`, `mise` (pinned); `fzf` helpers
 - Git defaults + machine-local identity
 - shared `~/.ssh/config` (no private keys)
 
 Pinned versions: `.chezmoidata.toml`. In-shell cheat sheet: **`dots`**
 (same command in zsh/bash and PowerShell).
+
+`mise` is scaffolding only (global Python pin + activate). Flipper / embedded
+toolchains and flashing hosts belong in separate project repos.
 
 ## Git identity
 

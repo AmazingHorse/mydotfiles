@@ -154,6 +154,10 @@ if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     Invoke-Expression (& { (zoxide init powershell | Out-String) })
 }
 
+if (Get-Command mise -ErrorAction SilentlyContinue) {
+    mise activate pwsh | Out-String | Invoke-Expression
+}
+
 $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
 if (-not $OhMyPoshCommand) {
     Write-Warning 'Oh My Posh is not installed. Run the dotfiles bootstrap to install it.'
