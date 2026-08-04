@@ -15,6 +15,7 @@ Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 - Migrations that touch existing user files must backup first and be `run_once_*`. SSH migrate must be CRLF-safe and **never** copy an `Include config.d/...` into `config.d/private.conf` (infinite recursion).
 - Profiles soft-fail on missing/mismatched bins — never `eval` broken init.
 - Ensure `~/.local/bin` on PATH before relying on user-installed tools.
+- **Path-first pin checks:** for anything we install into `~/.local/bin`, probe the install path (`$HOME/.local/bin/<tool>`) — never `Get-Command` / `command -v` alone. Chezmoi `run_*` scripts often lack that dir on PATH. Windows helpers: `Test-ManagedPinnedBinary`, `Install-ManagedZipRelease`. Linux: `install_pinned_tarball_binary` / oh-my-posh use the same rule.
 
 ## Dependencies / ABI
 - Pin self-installed bins in `.chezmoidata.toml`; float apt (`zsh`, `fzf`, …).
@@ -23,11 +24,12 @@ Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 - Portable Cursor User Rules live as a **paste source** in `agent/cursor-user-rules.md` (Cursor does not load `~/.cursor/rules` as global User Rules). Antigravity global: managed `~/.gemini/GEMINI.md`.
 - `mise` is scaffolding only: install + soft-fail activate + global `python` pin. On Windows, install **both** `mise.exe` and `mise-shim.exe` side-by-side (native shim mode). Flipper/ufbt/firmware/dev-board hosts stay in separate project repos (their own `mise.toml`).
 - Activate mise in **PowerShell 7+ only**; on Windows PowerShell 5.1 skip activate and set `MISE_PWSH_CHPWD_WARNING=0` (mise chpwd is unsupported there).
-- New pin: data → installer → soft-fail guard → CI asset check.
+- New pin: data → installer → soft-fail guard → CI asset check. Windows zip bins: `Install-ManagedZipRelease` + `Test-ManagedPinnedBinary` (companions via `-CompanionPaths`).
 - **glibc floor:** Go/CGO release builds from Ubuntu 22.04+ need `GLIBC_2.32`/`2.34`. Ubuntu 20.04 (2.31) fails with `version GLIBC_2.3x not found`. Prefer/detect musl (static) or older-compatible assets; do not assume `*-linux-amd64` / `*-glibc*` runs everywhere.
 - Chezmoi amd64: musl on musl hosts **or** when host glibc < 2.32; else `linux-glibc`. Verify `--version` after extract; retry musl on linker errors.
-- Downloads: winget/apt when exact; else GitHub → `$HOME/.cache/...`, retry, checksum, `~/.local/bin`. No bare `curl | sh` for critical bins on flaky nets.
-- Re-runnable: skip if desired version already present.
+- Downloads: winget/apt when exact; else GitHub → `$HOME/.cache/mydotfiles/downloads` (work dirs cleaned after extract), retry, checksum when critical, install to `~/.local/bin`. No bare `curl | sh` for critical bins on flaky nets. Do **not** stage release zips in `%TEMP%`.
+- Artifact map: `~/.local/bin` = our pinned CLIs; `$HOME/.cache/mydotfiles/downloads` = extract scratch; Windows mise tools ≈ `%LOCALAPPDATA%\mise`; Linux ≈ `~/.local/share/mise`.
+- Re-runnable: skip if desired version already present at the install path.
 
 ## Validation / debug
 - `bash ./scripts/ci-check.sh`. CI: shellcheck, chezmoi dry-run, templates, pin URLs, PS parse.
