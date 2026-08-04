@@ -6,6 +6,7 @@ preferred_oh_my_posh_version='{{ .packages.oh_my_posh }}'
 preferred_git_version='{{ .packages.git }}'
 minimum_git_version='{{ .packages.git_minimum }}'
 preferred_mise_version='{{ .packages.mise }}'
+preferred_just_version='{{ .packages.just }}'
 preferred_zoxide_version='{{ .packages.zoxide }}'
 preferred_ripgrep_version='{{ .packages.ripgrep }}'
 preferred_fd_version='{{ .packages.fd }}'
@@ -268,6 +269,13 @@ ensure_pinned_cli_tools() {
         "https://github.com/jdx/mise/releases/download/v${preferred_mise_version}/mise-v${preferred_mise_version}-${mise_arch}.tar.gz" \
         'mise' \
         "${preferred_mise_version}"
+
+    install_pinned_tarball_binary \
+        'just' \
+        "${preferred_just_version}" \
+        "https://github.com/casey/just/releases/download/${preferred_just_version}/just-${preferred_just_version}-${musl_target}.tar.gz" \
+        'just' \
+        "${preferred_just_version}"
 
     install_pinned_tarball_binary \
         'zoxide' \

@@ -24,6 +24,12 @@ Tool versions (mise)
   mise exec -- <cmd>          run with project tool versions
   Project repos own Flipper/ufbt/firmware — not this dotfiles repo
 
+Command runner (just) — from this checkout
+  just                        list recipes
+  just check                  scripts/ci-check.sh
+  just apply / diff / update  chezmoi against this source
+  just dots                   print cheat sheet
+
 Search
   rg TODO                    content search (smart-case, hidden, skip .git)
   rg -t py HTTPError         by type

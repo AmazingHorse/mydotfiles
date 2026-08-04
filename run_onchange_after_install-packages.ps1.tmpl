@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 $PinnedOhMyPoshVersion = '{{ .packages.oh_my_posh }}'
 $PinnedGitVersion = '{{ .packages.git }}'
 $PinnedMiseVersion = '{{ .packages.mise }}'
+$PinnedJustVersion = '{{ .packages.just }}'
 $PinnedZoxideVersion = '{{ .packages.zoxide }}'
 $PinnedRipgrepVersion = '{{ .packages.ripgrep }}'
 $PinnedFdVersion = '{{ .packages.fd }}'
@@ -256,6 +257,7 @@ Ensure-PinnedMise -PinnedVersion $PinnedMiseVersion -InstallDirectory $LocalBinD
 if (Get-Command winget -ErrorAction SilentlyContinue) {
     Ensure-WingetPackagePresent -PackageId 'GitHub.cli'
     Ensure-WingetPackagePresent -PackageId 'junegunn.fzf'
+    Ensure-WingetPackagePresent -PackageId 'Casey.Just' -PinnedVersion $PinnedJustVersion
     Ensure-WingetPackagePresent -PackageId 'ajeetdsouza.zoxide' -PinnedVersion $PinnedZoxideVersion
     Ensure-WingetPackagePresent -PackageId 'BurntSushi.ripgrep.MSVC' -PinnedVersion $PinnedRipgrepVersion
     Ensure-WingetPackagePresent -PackageId 'sharkdp.fd' -PinnedVersion $PinnedFdVersion

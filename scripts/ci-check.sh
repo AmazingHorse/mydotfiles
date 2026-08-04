@@ -169,12 +169,14 @@ ripgrep_version="$(read_pin ripgrep)"
 fd_version="$(read_pin fd)"
 git_delta_version="$(read_pin git_delta)"
 mise_version="$(read_pin mise)"
+just_version="$(read_pin just)"
 for required_pin in \
     zoxide_version \
     ripgrep_version \
     fd_version \
     git_delta_version \
-    mise_version; do
+    mise_version \
+    just_version; do
     if [ -z "${!required_pin}" ]; then
         echo "Could not read packages pin for ${required_pin}" >&2
         exit 1
@@ -187,6 +189,7 @@ tier1_urls=(
     "https://github.com/sharkdp/fd/releases/download/v${fd_version}/fd-v${fd_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://github.com/dandavison/delta/releases/download/${git_delta_version}/delta-${git_delta_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://github.com/jdx/mise/releases/download/v${mise_version}/mise-v${mise_version}-linux-x64-musl.tar.gz"
+    "https://github.com/casey/just/releases/download/${just_version}/just-${just_version}-x86_64-unknown-linux-musl.tar.gz"
 )
 for url in "${tier1_urls[@]}"; do
     http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"

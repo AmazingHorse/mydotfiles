@@ -19,7 +19,8 @@ Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 ## Dependencies / ABI
 - Pin self-installed bins in `.chezmoidata.toml`; float apt (`zsh`, `fzf`, …).
 - Preferred + floor when PPAs lag: `git` + `git_minimum` (≥ 2.35 / `zdiff3`). Ubuntu 20.04 git-core PPA ~2.50 max.
-- Pins: `chezmoi`, `oh_my_posh`, `mise`, `python` (mise global default), `zoxide`, `ripgrep`, `fd`, `git_delta`, `git`, `git_minimum` — bump in data file only.
+- Pins: `chezmoi`, `oh_my_posh`, `mise`, `just`, `python` (mise global default), `zoxide`, `ripgrep`, `fd`, `git_delta`, `git`, `git_minimum` — bump in data file only.
+- Portable Cursor User Rules live as a **paste source** in `agent/cursor-user-rules.md` (Cursor does not load `~/.cursor/rules` as global User Rules). Antigravity global: managed `~/.gemini/GEMINI.md`.
 - `mise` is scaffolding only: install + soft-fail activate + global `python` pin. On Windows, install **both** `mise.exe` and `mise-shim.exe` side-by-side (native shim mode). Flipper/ufbt/firmware/dev-board hosts stay in separate project repos (their own `mise.toml`).
 - Activate mise in **PowerShell 7+ only**; on Windows PowerShell 5.1 skip activate and set `MISE_PWSH_CHPWD_WARNING=0` (mise chpwd is unsupported there).
 - New pin: data → installer → soft-fail guard → CI asset check.
