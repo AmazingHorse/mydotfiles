@@ -4,6 +4,9 @@ Include config.d/*.conf
 Host *
     IdentitiesOnly yes
     AddKeysToAgent yes
+    ServerAliveInterval 60
+    ServerAliveCountMax 10
+
 
 Host github.com
     HostName github.com
