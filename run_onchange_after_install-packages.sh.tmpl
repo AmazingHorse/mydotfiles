@@ -11,6 +11,7 @@ preferred_zoxide_version='{{ .packages.zoxide }}'
 preferred_ripgrep_version='{{ .packages.ripgrep }}'
 preferred_fd_version='{{ .packages.fd }}'
 preferred_git_delta_version='{{ .packages.git_delta }}'
+# mise global config hash: {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
 
 if ! command -v apt-get >/dev/null 2>&1; then
     echo "Skipping package install: apt-get not found." >&2
@@ -331,4 +332,7 @@ fi
 ensure_modern_git
 ensure_pinned_oh_my_posh
 ensure_pinned_cli_tools
+if ! "${install_directory}/mise" install --yes; then
+    echo "Warning: mise could not install global tools." >&2
+fi
 {{ end -}}
