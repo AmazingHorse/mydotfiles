@@ -1,4 +1,5 @@
 # Shared interactive shell helpers. Soft-sourced from zshrc/bashrc.
+# shellcheck shell=bash
 
 export PATH="$HOME/.local/bin:$PATH"
 
