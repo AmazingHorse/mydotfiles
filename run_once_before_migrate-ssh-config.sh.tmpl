@@ -17,8 +17,7 @@ strip_config_d_includes() {
     local source_path="$1"
     local destination_path="$2"
     tr -d '\r' < "${source_path}" |
-        grep -Ev '^[[:space:]]*Include[[:space:]].*config\.d(/|\\|[[:space:]]|$)' >
-        "${destination_path}"
+        grep -Ev '^[[:space:]]*Include[[:space:]].*config\.d(/|\\|[[:space:]]|$)' > "${destination_path}"
 }
 
 write_private_stub() {
