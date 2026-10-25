@@ -22,4 +22,6 @@ Thumbs.db
 {{- end }}
 {{- if eq .chezmoi.os "windows" }}
 .local/bin/preferred-editor
+.justfile
+.config/agent-env.sh
 {{- end }}

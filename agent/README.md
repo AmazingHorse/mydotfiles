@@ -28,3 +28,4 @@ Do **not** copy `platform-shell` into this repo — it already lives in User Rul
 | This repo | `.cursor/rules/*.mdc` |
 | Other repos | their project rules only (no platform-shell clone) |
 | Antigravity | `chezmoi apply` → `~/.gemini/GEMINI.md` |
+| omp | `dot_omp/` → `~/.omp/` |

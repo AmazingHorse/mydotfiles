@@ -70,6 +70,15 @@ Pinned versions: `.chezmoidata.toml`. In-shell cheat sheet: **`dots`**
 Portable agent guidance: `agent/cursor-user-rules.md` (paste into Cursor User
 Rules) and `~/.gemini/GEMINI.md` (Antigravity; `chezmoi apply`).
 
+## Agent control plane
+
+The global omp contract, archetypes, and prompts are deployed under
+`~/.omp/`; Linux also links agy-crew skills into omp. Bash/zsh and PowerShell
+load platform-specific agent environment defaults. Use the global recipes:
+`just -g doctor`, `just -g agent-init [archetype]`, `just -g plan <task>`, and
+`just -g omp-run [args...]`. The `devin-worktree` and `devin-clean` recipes are
+future/optional stubs, not part of the active stack.
+
 `mise` is scaffolding only (global Python pin + activate). Flipper / embedded
 toolchains and flashing hosts belong in separate project repos.
 

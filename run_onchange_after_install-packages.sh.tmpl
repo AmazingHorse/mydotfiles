@@ -311,10 +311,22 @@ sudo apt-get update
 sudo apt-get install -y \
     curl \
     fzf \
+    shellcheck \
     software-properties-common \
     zsh \
     zsh-autosuggestions \
     zsh-syntax-highlighting
+
+{{ $isWsl := eq (includeTemplate "is-wsl" . | trim) "true" -}}
+{{ if $isWsl -}}
+if ! sudo apt-get install -y wslu; then
+    echo "Warning: could not install optional WSL browser integration (wslu)." >&2
+fi
+{{ else -}}
+if ! sudo apt-get install -y xdg-utils wl-clipboard; then
+    echo "Warning: could not install optional native Linux browser/clipboard tools." >&2
+fi
+{{ end -}}
 
 ensure_modern_git
 ensure_pinned_oh_my_posh

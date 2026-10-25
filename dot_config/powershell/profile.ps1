@@ -1,5 +1,10 @@
 # Managed PowerShell 7 profile. Windows $PROFILE should dot-source this file.
 
+$AgentEnvironmentPath = Join-Path $HOME '.config/powershell/agent-env.ps1'
+if (Test-Path -LiteralPath $AgentEnvironmentPath) {
+    . $AgentEnvironmentPath
+}
+
 $LocalBinDirectory = Join-Path $HOME '.local\bin'
 if (Test-Path -LiteralPath $LocalBinDirectory) {
     if (-not (($env:Path -split ';') -contains $LocalBinDirectory)) {

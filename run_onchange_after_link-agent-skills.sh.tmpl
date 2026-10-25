@@ -1,0 +1,19 @@
+{{ if eq .chezmoi.os "linux" -}}
+#!/usr/bin/env bash
+set -euo pipefail
+
+# agy-crew {{ .packages.agy_crew }}
+export PATH="${HOME}/.local/bin:${HOME}/.local/share/mise/shims:${PATH}"
+
+if ! command -v npm >/dev/null 2>&1 || ! command -v agy >/dev/null 2>&1; then
+    echo "Skipping agy-crew skill linking: npm or agy is not on PATH."
+    exit 0
+fi
+
+if ! npm install -g "agy-crew@{{ .packages.agy_crew }}"; then
+    echo "Warning: could not install agy-crew; skipping omp skill linking." >&2
+    exit 0
+fi
+
+agy-crew install --hosts omp || true
+{{ end -}}
