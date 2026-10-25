@@ -12,6 +12,7 @@ copy_targets=()
 
 expand_identity_path() {
     local raw_path="$1"
+    # shellcheck disable=SC2088 # Match literal user input; expand it below.
     case "${raw_path}" in
         '~'|'~/'*)
             printf '%s\n' "${HOME}${raw_path:1}"
