@@ -28,6 +28,8 @@ If WSL never finished first-run setup, open it once (`wsl -d Ubuntu`), then
 retry. Prefer cloning outside OneDrive. `sudo` may prompt during the Linux
 half — that is expected.
 
+WSL disables `appendWindowsPath` and re-adds System32 plus Cursor, VS Code, and Antigravity CLI paths; run `wsl.exe --shutdown` from Windows PowerShell to apply.
+
 ### Linux / WSL
 
 From a checkout (preferred):
