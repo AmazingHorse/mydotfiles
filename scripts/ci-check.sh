@@ -15,6 +15,8 @@ bash -n bootstrap.sh
 bash -n setup-ssh.sh
 bash -n dot_local/bin/executable_preferred-editor
 bash -n dot_config/shell/helpers.sh
+bash -n dot_config/shell/wsl-windows-path.sh
+sh -n dot_config/shell/wsl-windows-path.sh
 
 if command -v shellcheck >/dev/null 2>&1; then
     echo "==> shellcheck"
@@ -23,7 +25,8 @@ if command -v shellcheck >/dev/null 2>&1; then
         bootstrap.sh \
         setup-ssh.sh \
         dot_local/bin/executable_preferred-editor \
-        dot_config/shell/helpers.sh
+        dot_config/shell/helpers.sh \
+        dot_config/shell/wsl-windows-path.sh
 else
     echo "shellcheck not installed; skipping"
 fi
@@ -166,6 +169,109 @@ if grep -Eq '^[[:space:]]*Include[[:space:]].*config\.d' \
     echo "SSH migration left a recursive Include in private.conf" >&2
     exit 1
 fi
+
+echo "==> Verify WSL interop config"
+wsl_interop_directory="${destination_directory}/wsl-interop"
+mkdir -p "${wsl_interop_directory}"
+wsl_template_override='{"chezmoi":{"os":"linux","kernel":{"osrelease":"5.15.0-microsoft-standard-WSL2"}}}'
+native_linux_template_override='{"chezmoi":{"os":"linux","kernel":{"osrelease":"6.8.0-generic"}}}'
+rendered_wsl_interop="${wsl_interop_directory}/configure-wsl-interop.sh"
+rendered_native_wsl_interop="${wsl_interop_directory}/configure-wsl-interop.native.sh"
+chezmoi execute-template --file --source="${repository_root}" \
+    --override-data "${wsl_template_override}" \
+    "${repository_root}/run_onchange_after_configure-wsl-interop.sh.tmpl" \
+    > "${rendered_wsl_interop}"
+chezmoi execute-template --file --source="${repository_root}" \
+    --override-data "${native_linux_template_override}" \
+    "${repository_root}/run_onchange_after_configure-wsl-interop.sh.tmpl" \
+    > "${rendered_native_wsl_interop}"
+if [ -n "$(tr -d '[:space:]' < "${rendered_native_wsl_interop}")" ]; then
+    echo "WSL interop script should render empty on native Linux." >&2
+    exit 1
+fi
+bash -n "${rendered_wsl_interop}"
+if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck --severity=warning "${rendered_wsl_interop}"
+fi
+
+wsl_fixture_directory="${wsl_interop_directory}/fixtures"
+mkdir -p "${wsl_fixture_directory}"
+run_wsl_interop_fixture() {
+    local config_path="$1"
+    local output_path="$2"
+    MYDOTFILES_WSL_CONF="${config_path}" \
+        bash "${rendered_wsl_interop}" > "${output_path}"
+}
+
+missing_wsl_conf="${wsl_fixture_directory}/missing/wsl.conf"
+mkdir -p "$(dirname "${missing_wsl_conf}")"
+printf '[interop]\nappendWindowsPath = false\n' \
+    > "${wsl_fixture_directory}/missing.expected"
+run_wsl_interop_fixture \
+    "${missing_wsl_conf}" \
+    "${wsl_fixture_directory}/missing.stdout"
+cmp "${wsl_fixture_directory}/missing.expected" "${missing_wsl_conf}"
+
+boot_wsl_conf="${wsl_fixture_directory}/boot-only/wsl.conf"
+mkdir -p "$(dirname "${boot_wsl_conf}")"
+printf '[boot]\nsystemd=true\n' > "${boot_wsl_conf}"
+printf '[boot]\nsystemd=true\n\n[interop]\nappendWindowsPath = false\n' \
+    > "${wsl_fixture_directory}/boot-only.expected"
+run_wsl_interop_fixture \
+    "${boot_wsl_conf}" \
+    "${wsl_fixture_directory}/boot-only.stdout"
+cmp "${wsl_fixture_directory}/boot-only.expected" "${boot_wsl_conf}"
+
+existing_wsl_conf="${wsl_fixture_directory}/existing-interop/wsl.conf"
+mkdir -p "$(dirname "${existing_wsl_conf}")"
+printf '[interop]\nappendWindowsPath=true\nenabled=true\n[network]\nhostname=x\n' \
+    > "${existing_wsl_conf}"
+cp "${existing_wsl_conf}" "${wsl_fixture_directory}/existing-interop.original"
+printf '[interop]\nappendWindowsPath = false\nenabled=true\n[network]\nhostname=x\n' \
+    > "${wsl_fixture_directory}/existing-interop.expected"
+printf "Updated %s: appendWindowsPath = false. Run 'wsl.exe --shutdown' from Windows PowerShell to apply.\n" \
+    "${existing_wsl_conf}" > "${wsl_fixture_directory}/existing-interop.stdout.expected"
+run_wsl_interop_fixture \
+    "${existing_wsl_conf}" \
+    "${wsl_fixture_directory}/existing-interop.stdout"
+cmp "${wsl_fixture_directory}/existing-interop.expected" "${existing_wsl_conf}"
+cmp "${wsl_fixture_directory}/existing-interop.original" \
+    "${existing_wsl_conf}.mydotfiles.bak"
+cmp "${wsl_fixture_directory}/existing-interop.stdout.expected" \
+    "${wsl_fixture_directory}/existing-interop.stdout"
+run_wsl_interop_fixture \
+    "${existing_wsl_conf}" \
+    "${wsl_fixture_directory}/existing-interop.second.stdout"
+if [ -s "${wsl_fixture_directory}/existing-interop.second.stdout" ]; then
+    echo "Second WSL interop run unexpectedly produced output." >&2
+    exit 1
+fi
+cmp "${wsl_fixture_directory}/existing-interop.expected" "${existing_wsl_conf}"
+
+missing_key_wsl_conf="${wsl_fixture_directory}/missing-key/wsl.conf"
+mkdir -p "$(dirname "${missing_key_wsl_conf}")"
+printf '[interop]\nenabled=true\n\n[boot]\nsystemd=true\n' \
+    > "${missing_key_wsl_conf}"
+printf '[interop]\nenabled=true\nappendWindowsPath = false\n\n[boot]\nsystemd=true\n' \
+    > "${wsl_fixture_directory}/missing-key.expected"
+run_wsl_interop_fixture \
+    "${missing_key_wsl_conf}" \
+    "${wsl_fixture_directory}/missing-key.stdout"
+cmp "${wsl_fixture_directory}/missing-key.expected" "${missing_key_wsl_conf}"
+
+already_false_wsl_conf="${wsl_fixture_directory}/already-false/wsl.conf"
+mkdir -p "$(dirname "${already_false_wsl_conf}")"
+printf '[interop]\nappendWindowsPath = false\n' > "${already_false_wsl_conf}"
+cp "${already_false_wsl_conf}" "${wsl_fixture_directory}/already-false.expected"
+run_wsl_interop_fixture \
+    "${already_false_wsl_conf}" \
+    "${wsl_fixture_directory}/already-false.stdout"
+if [ -s "${wsl_fixture_directory}/already-false.stdout" ] ||
+    [ -e "${already_false_wsl_conf}.mydotfiles.bak" ]; then
+    echo "Unchanged WSL interop config should produce no output or backup." >&2
+    exit 1
+fi
+cmp "${wsl_fixture_directory}/already-false.expected" "${already_false_wsl_conf}"
 
 echo "==> Verify template data"
 rendered_identity="$(chezmoi execute-template '{{ .gitName }} <{{ .gitEmail }}>')"

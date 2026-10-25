@@ -1,0 +1,129 @@
+{{ if and (eq .chezmoi.os "linux") (or (contains "microsoft" (lower .chezmoi.kernel.osrelease)) (contains "wsl" (lower .chezmoi.kernel.osrelease))) -}}
+#!/usr/bin/env bash
+set -euo pipefail
+
+wsl_conf="${MYDOTFILES_WSL_CONF:-/etc/wsl.conf}"
+wsl_conf_dir="$(dirname -- "${wsl_conf}")"
+tmp="$(mktemp)"
+trap 'rm -f "${tmp}"' EXIT
+
+wsl_conf_input="${wsl_conf}"
+if [ ! -f "${wsl_conf}" ]; then
+    wsl_conf_input=/dev/null
+fi
+
+if ! awk '
+function is_header(line, lowered) {
+    lowered = tolower(line)
+    sub(/\r$/, "", lowered)
+    return lowered ~ /^[[:space:]]*\[[^]]+\][[:space:]]*([#;].*)?$/
+}
+function is_interop_header(line, lowered) {
+    lowered = tolower(line)
+    sub(/\r$/, "", lowered)
+    return lowered ~ /^[[:space:]]*\[[[:space:]]*interop[[:space:]]*\][[:space:]]*([#;].*)?$/
+}
+function is_append_windows_path(line, lowered) {
+    lowered = tolower(line)
+    sub(/\r$/, "", lowered)
+    return lowered ~ /^[[:space:]]*appendwindowspath[[:space:]]*=/
+}
+function add_interop_setting() {
+    if (in_interop && !found_setting) {
+        printf "appendWindowsPath = false%s\n", crlf
+        found_setting = 1
+    }
+}
+function flush_pending_blanks(line_number) {
+    for (line_number = 1; line_number <= pending_blank_count; line_number++) {
+        print pending_blanks[line_number]
+    }
+    pending_blank_count = 0
+}
+NR == 1 && substr($0, length($0), 1) == "\r" {
+    crlf = "\r"
+}
+{
+    saw_line = 1
+    last_line = $0
+    last_line_without_cr = $0
+    sub(/\r$/, "", last_line_without_cr)
+
+    if (is_header($0)) {
+        add_interop_setting()
+        flush_pending_blanks()
+        if (is_interop_header($0)) {
+            found_interop = 1
+            in_interop = 1
+        } else {
+            in_interop = 0
+        }
+    }
+
+    if (in_interop && is_append_windows_path($0)) {
+        flush_pending_blanks()
+        if (!found_setting) {
+            printf "appendWindowsPath = false%s\n", crlf
+            found_setting = 1
+        }
+        next
+    }
+
+    if (in_interop && !found_setting && last_line_without_cr ~ /^[[:space:]]*$/) {
+        pending_blanks[++pending_blank_count] = $0
+        next
+    }
+
+    flush_pending_blanks()
+    print $0
+}
+END {
+    add_interop_setting()
+    flush_pending_blanks()
+    if (!found_interop) {
+        if (saw_line && last_line_without_cr !~ /^[[:space:]]*$/) {
+            printf "%s\n", crlf
+        }
+        printf "[interop]%s\n", crlf
+        printf "appendWindowsPath = false%s\n", crlf
+    }
+}
+' "${wsl_conf_input}" > "${tmp}" 2>/dev/null; then
+    echo "Warning: could not read ${wsl_conf}; leaving it unchanged." >&2
+    exit 0
+fi
+
+if [ -f "${wsl_conf}" ] && cmp -s "${tmp}" "${wsl_conf}"; then
+    exit 0
+fi
+
+use_sudo=false
+if [ ! -w "${wsl_conf}" ] && { [ -e "${wsl_conf}" ] || [ ! -w "${wsl_conf_dir}" ]; }; then
+    if command -v sudo >/dev/null 2>&1; then
+        use_sudo=true
+    else
+        echo "Warning: cannot update ${wsl_conf}; sudo is unavailable." >&2
+        exit 0
+    fi
+fi
+
+backup="${wsl_conf}.mydotfiles.bak"
+if [ -e "${wsl_conf}" ] && [ ! -e "${backup}" ]; then
+    if ! cp -p "${wsl_conf}" "${backup}" 2>/dev/null; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo cp -p "${wsl_conf}" "${backup}"
+        else
+            echo "Warning: cannot back up ${wsl_conf}; sudo is unavailable." >&2
+            exit 0
+        fi
+    fi
+fi
+
+if [ "${use_sudo}" = true ]; then
+    sudo install -m 0644 "${tmp}" "${wsl_conf}"
+else
+    install -m 0644 "${tmp}" "${wsl_conf}"
+fi
+
+printf "Updated %s: appendWindowsPath = false. Run 'wsl.exe --shutdown' from Windows PowerShell to apply.\n" "${wsl_conf}"
+{{ end -}}
