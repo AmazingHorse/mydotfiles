@@ -9,6 +9,7 @@ alwaysApply: false
 See `dotfiles-bootstrap.mdc` for general + ABI rules.
 
 - **Paths:** never pass Windows `\` as `wsl` argv (`wslpath` → `C:Users...`). Use `WSLENV=VAR/pu`. Long `bash -c` via .NET `ArgumentList`. Clone outside OneDrive/Files-On-Demand.
+- WSL disables `appendWindowsPath` to prevent Windows Node/npm leaking into Linux, then appends System32 and Cursor, VS Code, and Antigravity CLI paths; run `wsl.exe --shutdown` from Windows PowerShell to apply.
 - **Cold start:** bounded Windows `/bin/true` probes; Linux waits for systemd; accept `running`|`degraded`. Failed units (`multipathd`, `atd`, `wsl2-xwayland`, …) are normal. First launch may need interactive `wsl -d Ubuntu`.
 - **XDG_RUNTIME_DIR:** unset if missing/unwritable (common before/during systemd ready).
 - **sudo:** noninteractive `wsl` has no TTY — wrap in `script -qec '...' /dev/null`.

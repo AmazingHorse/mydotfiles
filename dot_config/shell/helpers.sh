@@ -98,3 +98,8 @@ bins() {
 
     printf '%s\n' "${selected_command}"
 }
+
+# shellcheck source=/dev/null
+if [ -r "$HOME/.config/shell/wsl-windows-path.sh" ]; then
+    . "$HOME/.config/shell/wsl-windows-path.sh"
+fi
