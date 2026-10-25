@@ -10,10 +10,20 @@ if ! command -v npm >/dev/null 2>&1 || ! command -v agy >/dev/null 2>&1; then
     exit 0
 fi
 
+case "$(command -v npm)" in
+    /mnt/*)
+        echo "Skipping agy-crew skill linking: npm resolves to Windows ($(command -v npm))."
+        exit 0
+        ;;
+esac
+
 if ! npm install -g "agy-crew@{{ .packages.agy_crew }}"; then
     echo "Warning: could not install agy-crew; skipping omp skill linking." >&2
     exit 0
 fi
 
+if [ -x "${HOME}/.local/bin/mise" ]; then
+    "${HOME}/.local/bin/mise" reshim || true
+fi
 agy-crew install --hosts omp || true
 {{ end -}}
