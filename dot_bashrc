@@ -11,7 +11,10 @@ HISTFILESIZE=10000
 shopt -s histappend
 shopt -s checkwinsize
 
-export PATH="$HOME/.local/bin:$PATH"
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) PATH="$HOME/.local/bin:$PATH"; export PATH ;;
+esac
 
 if [ -f "$HOME/.config/shell/helpers.sh" ]; then
     # shellcheck source=/dev/null
