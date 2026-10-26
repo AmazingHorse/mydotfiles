@@ -139,16 +139,29 @@ function Set-WindowsTerminalAppearance {
 }
 
 function Set-EditorTerminalFont {
-    $EditorSettingsPaths = @(
-        (Join-Path $env:APPDATA 'Cursor\User\settings.json')
-        (Join-Path $env:APPDATA 'Code\User\settings.json')
-    )
+    $KnownEditors = @('Cursor', 'Devin', 'Antigravity', 'Antigravity IDE', 'Code')
+    $EditorSettingsPaths = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($Editor in $KnownEditors) {
+        $Path = Join-Path $env:APPDATA "$Editor\User\settings.json"
+        if (Test-Path -LiteralPath $Path) {
+            $EditorSettingsPaths.Add($Path)
+        }
+    }
+
+    $Discovered = Get-ChildItem -Path $env:APPDATA -Directory -ErrorAction SilentlyContinue | Where-Object {
+        Test-Path (Join-Path $_.FullName 'User\settings.json')
+    }
+    foreach ($Dir in $Discovered) {
+        $Path = Join-Path $Dir.FullName 'User\settings.json'
+        if (-not $EditorSettingsPaths.Contains($Path)) {
+            $EditorSettingsPaths.Add($Path)
+        }
+    }
+
     $TargetFont = "'CaskaydiaCove NF', 'CaskaydiaCove Nerd Font'"
 
     foreach ($Path in $EditorSettingsPaths) {
-        if (-not (Test-Path -LiteralPath $Path)) {
-            continue
-        }
         try {
             $Content = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
             if ($Content.'terminal.integrated.fontFamily' -ne $TargetFont) {
