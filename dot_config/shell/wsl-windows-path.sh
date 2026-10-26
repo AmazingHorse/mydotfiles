@@ -50,7 +50,6 @@ if [ -n "${WSL_DISTRO_NAME:-}" ]; then
         if [ -n "${_mydotfiles_wsl_localappdata}" ]; then
             _mydotfiles_append_path_end "${_mydotfiles_wsl_localappdata}/Programs/cursor/resources/app/bin"
             _mydotfiles_append_path_end "${_mydotfiles_wsl_localappdata}/Programs/Microsoft VS Code/bin"
-            _mydotfiles_append_path_end "${_mydotfiles_wsl_localappdata}/Programs/Antigravity/bin"
         fi
     fi
 
