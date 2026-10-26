@@ -13,13 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install chezmoi and shellcheck
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          sh -c "$(curl -fsLS https://get.chezmoi.io)" -- -b "$HOME/.local/bin"
+          CHEZMOI_VERSION="$(awk -F'"' '/^chezmoi[[:space:]]*=/ { print $2; exit }' .chezmoidata.toml)"
+          sh -c "$(curl -fsLS https://get.chezmoi.io)" -- -b "$HOME/.local/bin" -t "v${CHEZMOI_VERSION}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run Linux CI checks

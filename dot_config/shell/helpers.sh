@@ -1,7 +1,10 @@
 # Shared interactive shell helpers. Soft-sourced from zshrc/bashrc.
-# shellcheck shell=bash
+# shellcheck shell=sh disable=SC3043
 
-export PATH="$HOME/.local/bin:$PATH"
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) PATH="$HOME/.local/bin:$PATH"; export PATH ;;
+esac
 
 if command -v preferred-editor >/dev/null 2>&1; then
     export EDITOR="preferred-editor"
@@ -80,7 +83,7 @@ bins() {
 
     local selected_command
     selected_command="$(
-        printf '%s\n' "${PATH//:/$'\n'}" |
+        printf '%s\n' "$PATH" | tr ':' '\n' |
             while IFS= read -r path_entry; do
                 [ -n "${path_entry}" ] || continue
                 [ -d "${path_entry}" ] || continue

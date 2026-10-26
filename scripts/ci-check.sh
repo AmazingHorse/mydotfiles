@@ -17,6 +17,10 @@ bash -n dot_local/bin/executable_preferred-editor
 bash -n dot_config/shell/helpers.sh
 bash -n dot_config/shell/wsl-windows-path.sh
 sh -n dot_config/shell/wsl-windows-path.sh
+sh -n dot_config/shell/helpers.sh
+if command -v zsh >/dev/null 2>&1; then
+    zsh -n dot_zshrc
+fi
 
 if command -v shellcheck >/dev/null 2>&1; then
     echo "==> shellcheck"
@@ -282,6 +286,61 @@ fi
 
 # Target-state templates (including .packages from .chezmoidata.toml) are
 # already exercised by the dry-run apply above.
+
+echo "==> Verify gitconfig delta fallback when missing"
+git_check_dir="${destination_directory}/git-check"
+mkdir -p "${git_check_dir}/repo"
+rendered_gitconfig="${git_check_dir}/.gitconfig"
+chezmoi execute-template \
+    --source="${repository_root}" \
+    < dot_gitconfig.tmpl \
+    > "${rendered_gitconfig}"
+
+if ! grep -F 'less -FRX' "${rendered_gitconfig}" >/dev/null; then
+    echo "Rendered gitconfig does not contain 'less -FRX' fallback." >&2
+    exit 1
+fi
+
+clean_git_path=""
+IFS=':' read -r -a path_dirs <<< "${PATH}"
+for dir in "${path_dirs[@]}"; do
+    if [ -n "${dir}" ] && [ ! -x "${dir}/delta" ]; then
+        if [ -z "${clean_git_path}" ]; then
+            clean_git_path="${dir}"
+        else
+            clean_git_path="${clean_git_path}:${dir}"
+        fi
+    fi
+done
+
+git -C "${git_check_dir}/repo" init -q
+git -C "${git_check_dir}/repo" config user.name "CI"
+git -C "${git_check_dir}/repo" config user.email "ci@example.com"
+echo "test" > "${git_check_dir}/repo/file.txt"
+git -C "${git_check_dir}/repo" add file.txt
+git -C "${git_check_dir}/repo" commit -m "init" -q
+
+env -i \
+    HOME="${git_check_dir}" \
+    PATH="${clean_git_path}" \
+    GIT_CONFIG_GLOBAL="${rendered_gitconfig}" \
+    TERM="xterm-256color" \
+    git -C "${git_check_dir}/repo" log -1 >/dev/null
+
+echo "test modified" > "${git_check_dir}/repo/file.txt"
+env -i \
+    HOME="${git_check_dir}" \
+    PATH="${clean_git_path}" \
+    GIT_CONFIG_GLOBAL="${rendered_gitconfig}" \
+    TERM="xterm-256color" \
+    git -C "${git_check_dir}/repo" diff >/dev/null
+
+printf 'q\n' | env -i \
+    HOME="${git_check_dir}" \
+    PATH="${clean_git_path}" \
+    GIT_CONFIG_GLOBAL="${rendered_gitconfig}" \
+    TERM="xterm-256color" \
+    git -C "${git_check_dir}/repo" add -p >/dev/null
 
 echo "==> Verify pinned Oh My Posh release asset"
 oh_my_posh_version="$(
