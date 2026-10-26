@@ -62,6 +62,7 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 - Oh My Posh + Everforest; PowerShell 7 profile
 - zsh/bash + shared helpers; preferred-editor chain
 - `zoxide`, `rg`, `fd`, `delta`, `mise`, `just` (pinned); `fzf` helpers
+- Linux/WSL: Bun + Oh My Pi (`omp`) via mise, and Antigravity CLI (`agy`) via the official self-updating installer to `~/.local/bin`
 - Git defaults + machine-local identity
 - shared `~/.ssh/config` (no private keys)
 
@@ -81,7 +82,7 @@ load platform-specific agent environment defaults. Use the global recipes:
 `just -g omp-run [args...]`. The `devin-worktree` and `devin-clean` recipes are
 future/optional stubs, not part of the active stack.
 
-`mise` is scaffolding only (global Python pin + activate). Flipper / embedded
+`mise` is scaffolding only (global Python, Node, Bun, and omp pins + activate). Flipper / embedded
 toolchains and flashing hosts belong in separate project repos.
 
 ## Git identity
