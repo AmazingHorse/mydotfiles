@@ -308,6 +308,56 @@ ensure_pinned_cli_tools() {
         "${preferred_git_delta_version}"
 }
 
+ensure_agy() {
+    local target_path="${install_directory}/agy"
+    if [ -x "${target_path}" ]; then
+        echo "agy already installed at ${target_path}"
+        return 0
+    fi
+
+    local installer_path="${cache_directory}/agy-install.sh"
+    local partial_path="${installer_path}.partial"
+    local installer_url="https://antigravity.google/cli/install.sh"
+    if ! curl -fsSL --retry 3 --retry-delay 2 \
+        --output "${partial_path}" "${installer_url}"; then
+        rm -f "${partial_path}" 2>/dev/null || true
+        echo "Warning: could not download the agy installer." >&2
+        return 0
+    fi
+
+    if ! mv "${partial_path}" "${installer_path}"; then
+        rm -f "${partial_path}" 2>/dev/null || true
+        echo "Warning: could not save the agy installer." >&2
+        return 0
+    fi
+
+    local scratch_home
+    if ! scratch_home="$(mktemp -d)"; then
+        echo "Warning: could not create a temporary HOME for the agy installer." >&2
+        return 0
+    fi
+
+    # The installer always appends PATH exports to shell rc files; ~/.local/bin
+    # is already on PATH via the dotfiles, so send its rc edits to a scratch HOME.
+    local installer_status=0
+    if ! HOME="${scratch_home}" bash "${installer_path}" --dir "${install_directory}"; then
+        installer_status=1
+    fi
+
+    if ! rm -rf "${scratch_home}"; then
+        echo "Warning: could not remove the agy installer scratch HOME ${scratch_home}." >&2
+    fi
+
+    if [ "${installer_status}" -ne 0 ]; then
+        echo "Warning: the agy installer failed." >&2
+        return 0
+    fi
+
+    if [ ! -x "${target_path}" ]; then
+        echo "Warning: the agy installer did not create ${target_path}." >&2
+    fi
+}
+
 sudo apt-get update
 sudo apt-get install -y \
     curl \
@@ -320,6 +370,7 @@ sudo apt-get install -y \
 ensure_modern_git
 ensure_pinned_oh_my_posh
 ensure_pinned_cli_tools
+ensure_agy
 if ! "${install_directory}/mise" install --yes; then
     echo "Warning: mise could not install global tools." >&2
 fi
