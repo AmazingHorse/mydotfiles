@@ -21,6 +21,8 @@ Tool versions (mise)
   mise ls / mise ls-remote <tool>
   mise use -g python@3.12     (global default already pinned)
   mise use -g node@24         (global default already pinned)
+  mise use -g bun@1.3         (runtime for omp)
+  mise use -g npm:@oh-my-pi/pi-coding-agent@18.12.6  (omp)
   mise install                install tools from config / mise.toml
   mise exec -- <cmd>          run with project tool versions
   Project repos own Flipper/ufbt/firmware — not this dotfiles repo

@@ -276,13 +276,15 @@ fd_version="$(read_pin fd)"
 git_delta_version="$(read_pin git_delta)"
 mise_version="$(read_pin mise)"
 just_version="$(read_pin just)"
+omp_version="$(read_pin omp)"
 for required_pin in \
     zoxide_version \
     ripgrep_version \
     fd_version \
     git_delta_version \
     mise_version \
-    just_version; do
+    just_version \
+    omp_version; do
     if [ -z "${!required_pin}" ]; then
         echo "Could not read packages pin for ${required_pin}" >&2
         exit 1
@@ -303,6 +305,20 @@ for url in "${tier1_urls[@]}"; do
         200|302) ;;
         *)
             echo "Pinned Tier-1 asset not reachable (${http_status}): ${url}" >&2
+            exit 1
+            ;;
+    esac
+done
+
+echo "==> Verify agy installer and omp npm package URLs"
+for url in \
+    "https://antigravity.google/cli/install.sh" \
+    "https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/${omp_version}"; do
+    http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
+    case "${http_status}" in
+        200|302) ;;
+        *)
+            echo "Installer/package URL not reachable (${http_status}): ${url}" >&2
             exit 1
             ;;
     esac
