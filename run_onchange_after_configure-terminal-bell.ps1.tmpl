@@ -80,6 +80,26 @@ function Set-WindowsTerminalAppearance {
         Add-Member -NotePropertyName bellSound -NotePropertyValue $BellSoundPath -Force
     $Settings.profiles.defaults |
         Add-Member -NotePropertyName colorScheme -NotePropertyValue 'Everforest Dark' -Force
+    if (-not $Settings.profiles.defaults.font) {
+        $Settings.profiles.defaults |
+            Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    $Settings.profiles.defaults.font |
+        Add-Member -NotePropertyName face -NotePropertyValue 'CaskaydiaCove NF' -Force
+
+    if ($Settings.profiles.list) {
+        foreach ($profile in $Settings.profiles.list) {
+            if ($profile.font -and $profile.font.face -eq 'CaskaydiaCove Nerd Font') {
+                $profile.font.face = 'CaskaydiaCove NF'
+            }
+            if ($profile.name -like '*Ubuntu*' -or $profile.source -in @('Microsoft.WSL', 'Windows.Terminal.Wsl')) {
+                if (-not $profile.font) {
+                    $profile | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+                }
+                $profile.font | Add-Member -NotePropertyName face -NotePropertyValue 'CaskaydiaCove NF' -Force
+            }
+        }
+    }
 
     $EverforestDarkScheme = [pscustomobject]@{
         name                = 'Everforest Dark'
@@ -118,6 +138,47 @@ function Set-WindowsTerminalAppearance {
     )
 }
 
+function Set-EditorTerminalFont {
+    $KnownEditors = @('Cursor', 'Devin', 'Antigravity', 'Antigravity IDE', 'Code')
+    $EditorSettingsPaths = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($Editor in $KnownEditors) {
+        $Path = Join-Path $env:APPDATA "$Editor\User\settings.json"
+        if (Test-Path -LiteralPath $Path) {
+            $EditorSettingsPaths.Add($Path)
+        }
+    }
+
+    $Discovered = Get-ChildItem -Path $env:APPDATA -Directory -ErrorAction SilentlyContinue | Where-Object {
+        Test-Path (Join-Path $_.FullName 'User\settings.json')
+    }
+    foreach ($Dir in $Discovered) {
+        $Path = Join-Path $Dir.FullName 'User\settings.json'
+        if (-not $EditorSettingsPaths.Contains($Path)) {
+            $EditorSettingsPaths.Add($Path)
+        }
+    }
+
+    $TargetFont = "'CaskaydiaCove NF', 'CaskaydiaCove Nerd Font'"
+
+    foreach ($Path in $EditorSettingsPaths) {
+        try {
+            $Content = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+            if ($Content.'terminal.integrated.fontFamily' -ne $TargetFont) {
+                $Content | Add-Member -NotePropertyName 'terminal.integrated.fontFamily' -NotePropertyValue $TargetFont -Force
+                $Json = $Content | ConvertTo-Json -Depth 32
+                [System.IO.File]::WriteAllText(
+                    $Path,
+                    $Json + [Environment]::NewLine,
+                    [System.Text.UTF8Encoding]::new($false)
+                )
+            }
+        } catch {
+            Write-Warning "Could not update editor terminal font for $Path : $_"
+        }
+    }
+}
+
 $BellSoundPath = Join-Path $HOME '.config\terminal\gentle-bell.wav'
 if (-not (Test-Path -LiteralPath $BellSoundPath)) {
     Write-GentleTerminalBell -Path $BellSoundPath
@@ -134,4 +195,6 @@ foreach ($TerminalSettingsPath in $TerminalSettingsPaths) {
         -SettingsPath $TerminalSettingsPath `
         -BellSoundPath $BellSoundPath
 }
+
+Set-EditorTerminalFont
 {{ end -}}

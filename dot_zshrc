@@ -7,6 +7,11 @@ if [ -f "$HOME/.config/shell/helpers.sh" ]; then
     . "$HOME/.config/shell/helpers.sh"
 fi
 
+if [ -r "$HOME/.config/agent-env.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$HOME/.config/agent-env.sh"
+fi
+
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=5000
 SAVEHIST=10000

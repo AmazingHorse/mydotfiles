@@ -1,0 +1,22 @@
+# Managed by chezmoi, rendered per platform.
+export AGENT_HOME="$HOME/.omp"
+{{ if eq .chezmoi.os "linux" -}}
+{{ $isWsl := eq (includeTemplate "is-wsl" . | trim) "true" -}}
+{{ if $isWsl -}}
+export AGENT_ENV=wsl2
+if [ -z "${BROWSER+x}" ] && command -v wslview >/dev/null 2>&1; then
+    export BROWSER=wslview
+fi
+export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+{{ else -}}
+export AGENT_ENV=linux-native
+if command -v xdg-open >/dev/null 2>&1; then
+    export BROWSER="${BROWSER:-xdg-open}"
+fi
+export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+if [ -d /opt/rocm ]; then
+    export ROCM_PATH="${ROCM_PATH:-/opt/rocm}"
+    export HIP_VISIBLE_DEVICES="${HIP_VISIBLE_DEVICES:-0}"
+fi
+{{ end -}}
+{{ end }}
