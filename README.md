@@ -59,7 +59,7 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 
 ## What you get
 
-- Oh My Posh + Everforest; PowerShell 7 profile
+- Oh My Posh + Everforest + CaskaydiaCove Nerd Font; PowerShell 7 profile
 - zsh/bash + shared helpers; preferred-editor chain
 - `zoxide`, `rg`, `fd`, `delta`, `mise`, `just` (pinned); `fzf` helpers
 - Linux/WSL: Bun + Oh My Pi (`omp`) via mise, and Antigravity CLI (`agy`) via the official self-updating installer to `~/.local/bin`

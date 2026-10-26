@@ -11,7 +11,9 @@ preferred_zoxide_version='{{ .packages.zoxide }}'
 preferred_ripgrep_version='{{ .packages.ripgrep }}'
 preferred_fd_version='{{ .packages.fd }}'
 preferred_git_delta_version='{{ .packages.git_delta }}'
+preferred_nerd_fonts_version='{{ .packages.nerd_fonts }}'
 # mise global config hash: {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
+{{ $isWsl := eq (includeTemplate "is-wsl" . | trim) "true" -}}
 
 if ! command -v apt-get >/dev/null 2>&1; then
     echo "Skipping package install: apt-get not found." >&2
@@ -357,18 +359,201 @@ ensure_agy() {
         echo "Warning: the agy installer did not create ${target_path}." >&2
     fi
 }
+ensure_pinned_nerd_fonts() {
+    local pinned_version="$1"
+    local font_dir="${HOME}/.local/share/fonts/NerdFonts/CaskaydiaCove"
+    local version_file="${font_dir}/.installed-version"
+
+    if [[ -d "${font_dir}" && -f "${version_file}" ]]; then
+        local installed_version
+        installed_version="$(tr -d '[:space:]' < "${version_file}" 2>/dev/null || true)"
+        if [[ "${installed_version}" == "${pinned_version}" ]]; then
+            return 0
+        fi
+    fi
+
+    echo "Installing pinned CaskaydiaCove Nerd Font ${pinned_version}"
+    local download_url="https://github.com/ryanoasis/nerd-fonts/releases/download/v${pinned_version}/CascadiaCode.zip"
+    local work_dir
+    if ! work_dir="$(mktemp -d)"; then
+        echo "Warning: could not create a temporary directory for Nerd Fonts." >&2
+        return 0
+    fi
+    local archive_path="${work_dir}/CascadiaCode.zip"
+
+    if ! download_with_retries "${archive_path}" "${download_url}"; then
+        echo "Warning: could not download CaskaydiaCove Nerd Font." >&2
+        rm -rf "${work_dir}"
+        return 0
+    fi
+
+    mkdir -p "${font_dir}"
+    if ! unzip -q -o "${archive_path}" '*.ttf' -d "${font_dir}"; then
+        echo "Warning: could not extract CaskaydiaCove Nerd Font." >&2
+        rm -rf "${work_dir}"
+        return 0
+    fi
+    printf '%s\n' "${pinned_version}" > "${version_file}"
+    rm -rf "${work_dir}"
+
+    if command -v fc-cache >/dev/null 2>&1; then
+        fc-cache -f "${HOME}/.local/share/fonts" || true
+    fi
+}
+
+{{ if $isWsl -}}
+ensure_wsl_windows_nerd_fonts() {
+    local pinned_version="$1"
+    local localappdata=""
+    if command -v wslvar >/dev/null 2>&1; then
+        localappdata="$(wslvar LOCALAPPDATA 2>/dev/null || true)"
+    fi
+    if [[ -z "${localappdata}" && -x /mnt/c/Windows/System32/cmd.exe ]]; then
+        localappdata="$(/mnt/c/Windows/System32/cmd.exe /c 'echo %LOCALAPPDATA%' 2>/dev/null | tr -d '\r\n' || true)"
+    fi
+    [[ -n "${localappdata}" ]] || return 0
+
+    local win_fonts_dir
+    win_fonts_dir="$(wslpath "${localappdata}/Microsoft/Windows/Fonts" 2>/dev/null || true)"
+    [[ -n "${win_fonts_dir}" ]] || return 0
+    mkdir -p "${win_fonts_dir}"
+
+    local version_file="${win_fonts_dir}/.caskaydiacove-nerd-font-version"
+    local installed_version=""
+    if [[ -f "${version_file}" ]]; then
+        installed_version="$(tr -d '[:space:]' < "${version_file}" 2>/dev/null || true)"
+    fi
+    if [[ "${installed_version}" != "${pinned_version}" ]]; then
+        local font_src_dir="${HOME}/.local/share/fonts/NerdFonts/CaskaydiaCove"
+        if [[ -d "${font_src_dir}" ]]; then
+            cp -f "${font_src_dir}"/*.ttf "${win_fonts_dir}/" 2>/dev/null || true
+            printf '%s\n' "${pinned_version}" > "${version_file}" 2>/dev/null || true
+        fi
+    fi
+
+    if [[ -x /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]]; then
+        /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command '
+            $ErrorActionPreference = "SilentlyContinue"
+            Add-Type -AssemblyName PresentationCore -ErrorAction SilentlyContinue
+
+            $win32Type = @"
+using System;
+using System.Runtime.InteropServices;
+public class FontHelper {
+    [DllImport("gdi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern int AddFontResource(string lpFileName);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+}
+"@
+            Add-Type -TypeDefinition $win32Type -ErrorAction SilentlyContinue
+
+            $FontsDir = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
+            $RegKey = "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
+            $TtfFiles = Get-ChildItem -Path $FontsDir -Filter "CaskaydiaCove*.ttf" -ErrorAction SilentlyContinue
+
+            foreach ($file in $TtfFiles) {
+                try {
+                    [FontHelper]::AddFontResource($file.FullName) | Out-Null
+                } catch {}
+
+                $fontUri = New-Object System.Uri($file.FullName)
+                try {
+                    $gt = New-Object System.Windows.Media.GlyphTypeface($fontUri)
+                    $win32Family = $gt.Win32FamilyNames.Values | Select-Object -First 1
+                    $win32Face = $gt.Win32FaceNames.Values | Select-Object -First 1
+                    $regName = if ($win32Face -eq "Regular") { "$win32Family (TrueType)" } else { "$win32Family $win32Face (TrueType)" }
+                    Set-ItemProperty -Path $RegKey -Name $regName -Value $file.FullName -Type String -Force | Out-Null
+                    foreach ($fam in $gt.FamilyNames.Values) {
+                        if ($fam -ne $win32Family) {
+                            $regName2 = if ($win32Face -eq "Regular") { "$fam (TrueType)" } else { "$fam $win32Face (TrueType)" }
+                            Set-ItemProperty -Path $RegKey -Name $regName2 -Value $file.FullName -Type String -Force | Out-Null
+                        }
+                    }
+                } catch {}
+            }
+
+            try {
+                $HWND_BROADCAST = [IntPtr]0xffff
+                $WM_FONTCHANGE = 0x001D
+                [FontHelper]::SendMessage($HWND_BROADCAST, $WM_FONTCHANGE, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+            } catch {}
+
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+            $wtPaths = @(
+                (Join-Path $env:LOCALAPPDATA "Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"),
+                (Join-Path $env:LOCALAPPDATA "Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json"),
+                (Join-Path $env:LOCALAPPDATA "Microsoft\Windows Terminal\settings.json")
+            )
+
+            foreach ($wtPath in $wtPaths) {
+                if (Test-Path -LiteralPath $wtPath) {
+                    try {
+                        $settings = Get-Content -LiteralPath $wtPath -Raw | ConvertFrom-Json
+                        if (-not $settings.profiles.defaults) {
+                            $settings.profiles.defaults = [pscustomobject]@{}
+                        }
+                        if (-not $settings.profiles.defaults.font) {
+                            $settings.profiles.defaults | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+                        }
+                        $settings.profiles.defaults.font | Add-Member -NotePropertyName face -NotePropertyValue "CaskaydiaCove NF" -Force
+
+                        if ($settings.profiles.list) {
+                            foreach ($profile in $settings.profiles.list) {
+                                if ($profile.font -and $profile.font.face -eq "CaskaydiaCove Nerd Font") {
+                                    $profile.font.face = "CaskaydiaCove NF"
+                                }
+                                if ($profile.name -like "*Ubuntu*" -or $profile.source -in @("Microsoft.WSL", "Windows.Terminal.Wsl")) {
+                                    if (-not $profile.font) {
+                                        $profile | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+                                    }
+                                    $profile.font | Add-Member -NotePropertyName face -NotePropertyValue "CaskaydiaCove NF" -Force
+                                }
+                            }
+                        }
+
+                        $jsonContent = $settings | ConvertTo-Json -Depth 32
+                        [System.IO.File]::WriteAllText($wtPath, $jsonContent + [Environment]::NewLine, $utf8NoBom)
+                    } catch {}
+                }
+            }
+
+            $editorPaths = @(
+                (Join-Path $env:APPDATA "Cursor\User\settings.json"),
+                (Join-Path $env:APPDATA "Code\User\settings.json")
+            )
+            $q = [char]39
+            $targetFont = "${q}CaskaydiaCove NF${q}, ${q}CaskaydiaCove Nerd Font${q}"
+
+            foreach ($p in $editorPaths) {
+                if (Test-Path -LiteralPath $p) {
+                    try {
+                        $s = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json
+                        $s | Add-Member -NotePropertyName "terminal.integrated.fontFamily" -NotePropertyValue $targetFont -Force
+                        $json = $s | ConvertTo-Json -Depth 32
+                        [System.IO.File]::WriteAllText($p, $json + [Environment]::NewLine, $utf8NoBom)
+                    } catch {}
+                }
+            }
+        ' >/dev/null 2>&1 || true
+    fi
+}
+{{ end -}}
 
 sudo apt-get update
 sudo apt-get install -y \
     curl \
+    fontconfig \
     fzf \
     shellcheck \
     software-properties-common \
+    unzip \
     zsh \
     zsh-autosuggestions \
     zsh-syntax-highlighting
 
-{{ $isWsl := eq (includeTemplate "is-wsl" . | trim) "true" -}}
 {{ if $isWsl -}}
 if ! sudo apt-get install -y wslu; then
     echo "Warning: could not install optional WSL browser integration (wslu)." >&2
@@ -383,6 +568,10 @@ ensure_modern_git
 ensure_pinned_oh_my_posh
 ensure_pinned_cli_tools
 ensure_agy
+ensure_pinned_nerd_fonts "${preferred_nerd_fonts_version}"
+{{ if $isWsl -}}
+ensure_wsl_windows_nerd_fonts "${preferred_nerd_fonts_version}"
+{{ end -}}
 if ! "${install_directory}/mise" install --yes; then
     echo "Warning: mise could not install global tools." >&2
 fi

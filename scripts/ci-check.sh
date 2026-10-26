@@ -340,6 +340,7 @@ mise_version="$(read_pin mise)"
 just_version="$(read_pin just)"
 agy_crew_version="$(read_pin agy_crew)"
 omp_version="$(read_pin omp)"
+nerd_fonts_version="$(read_pin nerd_fonts)"
 for required_pin in \
     zoxide_version \
     ripgrep_version \
@@ -348,7 +349,8 @@ for required_pin in \
     mise_version \
     just_version \
     agy_crew_version \
-    omp_version; do
+    omp_version \
+    nerd_fonts_version; do
     if [ -z "${!required_pin}" ]; then
         echo "Could not read packages pin for ${required_pin}" >&2
         exit 1
@@ -363,6 +365,7 @@ tier1_urls=(
     "https://github.com/jdx/mise/releases/download/v${mise_version}/mise-v${mise_version}-linux-x64-musl.tar.gz"
     "https://github.com/casey/just/releases/download/${just_version}/just-${just_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://registry.npmjs.org/agy-crew/-/agy-crew-${agy_crew_version}.tgz"
+    "https://github.com/ryanoasis/nerd-fonts/releases/download/v${nerd_fonts_version}/CascadiaCode.zip"
 )
 for url in "${tier1_urls[@]}"; do
     http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
