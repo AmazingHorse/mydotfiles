@@ -1,0 +1,172 @@
+# Global agent control plane tasks. Invoke with: just -g <recipe>
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set positional-arguments
+
+agent_home := env("AGENT_HOME", home_directory() / ".omp")
+
+[no-cd]
+default:
+    just --justfile {{quote(justfile())}} --list
+
+[no-cd]
+agent-init archetype="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    agent_home={{quote(agent_home)}}
+    archetype="${1:-}"
+    archetypes_dir="$agent_home/archetypes"
+    list_archetypes() {
+        printf 'Available archetypes:\n'
+        for archetype_file in "$archetypes_dir"/*.md; do
+            [[ -f "$archetype_file" ]] || continue
+            basename "$archetype_file" .md
+        done
+    }
+    if [[ -z "$archetype" ]]; then
+        list_archetypes
+        exit 0
+    fi
+    archetype_file="$archetypes_dir/$archetype.md"
+    if [[ ! -f "$archetype_file" ]]; then
+        printf 'Unknown archetype: %s\n' "$archetype" >&2
+        list_archetypes >&2
+        exit 1
+    fi
+    if [[ -e ./.agent-profile.md ]]; then
+        printf 'Refusing to overwrite .agent-profile.md\n' >&2
+        exit 1
+    fi
+    cp "$archetype_file" ./.agent-profile.md
+    printf 'Created .agent-profile.md from archetype %s\n' "$archetype"
+
+[no-cd]
+plan +task:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    agent_home={{quote(agent_home)}}
+    if ! command -v omp >/dev/null 2>&1; then
+        printf 'omp is required to plan tasks; install omp first.\n' >&2
+        exit 1
+    fi
+    prompt="$(<"$agent_home/prompts/plan-spec.md")"
+    prompt+=$'\n\n## Global contract\n'
+    prompt+="$(<"$agent_home/agent/AGENTS.md")"
+    if [[ -f ./.agent-profile.md ]]; then
+        prompt+=$'\n\n## Project profile\n'
+        prompt+="$(<./.agent-profile.md)"
+    fi
+    prompt+=$'\n\n## Task\n'
+    prompt+="$*"
+    exec omp "$prompt"
+
+[no-cd]
+omp-run *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! -f ./.agent-spec.md ]]; then
+        printf 'Missing .agent-spec.md; run: just -g plan <task>\n' >&2
+        exit 1
+    fi
+    if ! command -v omp >/dev/null 2>&1; then
+        printf 'omp is required to run the agent spec.\n' >&2
+        exit 1
+    fi
+    exec omp "$@" @.agent-spec.md
+
+[no-cd]
+doctor:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    agent_home={{quote(agent_home)}}
+    report_value() {
+        printf '%-18s %s\n' "$1" "$2"
+    }
+    report_value AGENT_ENV "${AGENT_ENV:-"(unset — source ~/.config/agent-env.sh)"}"
+    report_value kernel "$(uname -srm)"
+    report_value BROWSER "${BROWSER:-"(unset)"}"
+    report_value OLLAMA_HOST "${OLLAMA_HOST:-"(unset)"}"
+    report_value AGENT_HOME "${AGENT_HOME:-$agent_home}"
+    printf '\nactive stack:\n'
+    for binary in omp agy just rg node; do
+        if binary_path="$(command -v "$binary" 2>/dev/null)"; then
+            report_value "$binary" "$binary_path"
+        else
+            report_value "$binary" missing
+        fi
+    done
+    printf '\nfuture (optional):\n'
+    if binary_path="$(command -v devin 2>/dev/null)"; then
+        report_value devin "$binary_path"
+    else
+        report_value devin missing
+    fi
+    printf '\nskills:\n'
+    skills_dir="$agent_home/agent/skills"
+    if [[ ! -d "$skills_dir" ]]; then
+        report_value skills 'not linked (run: agy-crew install --hosts omp)'
+    else
+        skill_count=0
+        for skill in "$skills_dir"/*; do
+            [[ -e "$skill" || -L "$skill" ]] || continue
+            skill_count=$((skill_count + 1))
+        done
+        report_value skills "$skill_count entries"
+    fi
+
+[no-cd]
+[group('future')]
+devin-worktree branch model="devin/swe-1.6":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    agent_home={{quote(agent_home)}}
+    branch={{quote(branch)}}
+    model={{quote(model)}}
+    if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+        printf 'Run devin-worktree inside a git repository.\n' >&2
+        exit 1
+    fi
+    if [[ ! -f ./.agent-spec.md ]]; then
+        printf 'Missing .agent-spec.md; run: just -g plan <task>\n' >&2
+        exit 1
+    fi
+    if ! command -v omp >/dev/null 2>&1; then
+        printf 'omp is required to run the agent spec.\n' >&2
+        exit 1
+    fi
+    if ! command -v devin >/dev/null 2>&1; then
+        printf 'devin-worktree is a future stub for omp → Devin CLI provider integration; devin CLI is not installed.\n' >&2
+        exit 1
+    fi
+    wt="$(dirname "$repo_root")/wt-${branch//\//-}"
+    # FUTURE/OPTIONAL: omp → Devin CLI provider integration; not part of the active stack.
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+        git worktree add "$wt" "$branch"
+    else
+        git worktree add -b "$branch" "$wt"
+    fi
+    cp .agent-spec.md "$wt/.agent-spec.md"
+    {
+        cat "$agent_home/agent/AGENTS.md"
+        if [[ -f ./.agent-profile.md ]]; then
+            printf '\n\n## Project profile\n'
+            cat ./.agent-profile.md
+        fi
+    } > "$wt/.agent-profile.md"
+    cd "$wt" && exec omp --model "$model" @.agent-spec.md
+
+[no-cd]
+[group('future')]
+devin-clean branch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    branch={{quote(branch)}}
+    if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+        printf 'Run devin-clean inside a git repository.\n' >&2
+        exit 1
+    fi
+    wt="$(dirname "$repo_root")/wt-${branch//\//-}"
+    if ! git worktree remove "$wt"; then
+        printf 'Could not remove %s; ensure the worktree is clean before retrying.\n' "$wt" >&2
+        exit 1
+    fi

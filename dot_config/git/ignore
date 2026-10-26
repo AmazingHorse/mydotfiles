@@ -11,3 +11,7 @@ Desktop.ini
 # Local environment files
 .env.local
 .env.*.local
+
+# Agent control plane (per-project drop-ins)
+.agent-spec.md
+.agent-profile.md

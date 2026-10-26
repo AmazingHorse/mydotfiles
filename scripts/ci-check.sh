@@ -48,6 +48,68 @@ cleanup() {
 }
 trap cleanup EXIT
 
+render_directory="${destination_directory}/rendered"
+mkdir -p "${render_directory}"
+native_linux_override='{"chezmoi":{"os":"linux","kernel":{"osrelease":"6.8.0-generic"}}}'
+wsl_override='{"chezmoi":{"os":"linux","kernel":{"osrelease":"5.15.0-microsoft-standard-WSL2"}}}'
+windows_override='{"chezmoi":{"os":"windows"}}'
+
+echo "==> Verify agent environment renders"
+chezmoi execute-template --file --source="${repository_root}" \
+    --override-data "${native_linux_override}" \
+    "${repository_root}/dot_config/agent-env.sh.tmpl" > "${render_directory}/agent-env-linux.sh"
+chezmoi execute-template --file --source="${repository_root}" \
+    --override-data "${wsl_override}" \
+    "${repository_root}/dot_config/agent-env.sh.tmpl" > "${render_directory}/agent-env-wsl.sh"
+if ! grep -Fqx 'export AGENT_ENV=linux-native' "${render_directory}/agent-env-linux.sh" ||
+    ! grep -Fqx 'export AGENT_ENV=wsl2' "${render_directory}/agent-env-wsl.sh"; then
+    echo "Agent environment did not select the expected native Linux and WSL branches." >&2
+    exit 1
+fi
+bash -n "${render_directory}/agent-env-linux.sh"
+bash -n "${render_directory}/agent-env-wsl.sh"
+if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck --shell=sh --severity=warning \
+        "${render_directory}/agent-env-linux.sh" \
+        "${render_directory}/agent-env-wsl.sh"
+fi
+
+echo "==> Verify Linux run-script renders"
+rendered_install_script="${render_directory}/install-packages.sh"
+rendered_skill_script="${render_directory}/link-agent-skills.sh"
+chezmoi execute-template --file --source="${repository_root}" \
+    "${repository_root}/run_onchange_after_install-packages.sh.tmpl" \
+    > "${rendered_install_script}"
+chezmoi execute-template --file --source="${repository_root}" \
+    "${repository_root}/run_onchange_after_link-agent-skills.sh.tmpl" \
+    > "${rendered_skill_script}"
+bash -n "${rendered_install_script}"
+bash -n "${rendered_skill_script}"
+if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck --severity=warning "${rendered_install_script}" "${rendered_skill_script}"
+fi
+
+for script_template in \
+    run_onchange_after_install-packages.sh.tmpl \
+    run_onchange_after_link-agent-skills.sh.tmpl; do
+    windows_render="${render_directory}/$(basename "${script_template}").windows"
+    chezmoi execute-template --file --source="${repository_root}" \
+        --override-data "${windows_override}" \
+        "${repository_root}/${script_template}" > "${windows_render}"
+    if [ -s "${windows_render}" ]; then
+        echo "Expected ${script_template} to render empty on Windows." >&2
+        exit 1
+    fi
+done
+
+echo "==> Verify agent configuration files"
+python3 -m json.tool dot_omp/agent/mcp.json >/dev/null
+if command -v just >/dev/null 2>&1; then
+    just --justfile dot_justfile --list >/dev/null
+else
+    echo "just not installed; skipping agent justfile parse"
+fi
+
 chezmoi apply \
     --dry-run \
     --source="${repository_root}" \
@@ -276,7 +338,9 @@ fd_version="$(read_pin fd)"
 git_delta_version="$(read_pin git_delta)"
 mise_version="$(read_pin mise)"
 just_version="$(read_pin just)"
+agy_crew_version="$(read_pin agy_crew)"
 omp_version="$(read_pin omp)"
+nerd_fonts_version="$(read_pin nerd_fonts)"
 for required_pin in \
     zoxide_version \
     ripgrep_version \
@@ -284,7 +348,9 @@ for required_pin in \
     git_delta_version \
     mise_version \
     just_version \
-    omp_version; do
+    agy_crew_version \
+    omp_version \
+    nerd_fonts_version; do
     if [ -z "${!required_pin}" ]; then
         echo "Could not read packages pin for ${required_pin}" >&2
         exit 1
@@ -298,6 +364,8 @@ tier1_urls=(
     "https://github.com/dandavison/delta/releases/download/${git_delta_version}/delta-${git_delta_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://github.com/jdx/mise/releases/download/v${mise_version}/mise-v${mise_version}-linux-x64-musl.tar.gz"
     "https://github.com/casey/just/releases/download/${just_version}/just-${just_version}-x86_64-unknown-linux-musl.tar.gz"
+    "https://registry.npmjs.org/agy-crew/-/agy-crew-${agy_crew_version}.tgz"
+    "https://github.com/ryanoasis/nerd-fonts/releases/download/v${nerd_fonts_version}/CascadiaCode.zip"
 )
 for url in "${tier1_urls[@]}"; do
     http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"

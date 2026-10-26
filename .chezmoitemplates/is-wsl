@@ -1,0 +1,10 @@
+{{- if eq .chezmoi.os "linux" -}}
+{{- $osrelease := lower .chezmoi.kernel.osrelease -}}
+{{- if or (contains "microsoft" $osrelease) (contains "wsl" $osrelease) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- else -}}
+false
+{{- end -}}

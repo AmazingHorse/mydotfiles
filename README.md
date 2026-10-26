@@ -59,7 +59,7 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 
 ## What you get
 
-- Oh My Posh + Everforest; PowerShell 7 profile
+- Oh My Posh + Everforest + CaskaydiaCove Nerd Font; PowerShell 7 profile
 - zsh/bash + shared helpers; preferred-editor chain
 - `zoxide`, `rg`, `fd`, `delta`, `mise`, `just` (pinned); `fzf` helpers
 - Linux/WSL: Bun + Oh My Pi (`omp`) via mise, and Antigravity CLI (`agy`) via the official self-updating installer to `~/.local/bin`
@@ -72,6 +72,15 @@ Pinned versions: `.chezmoidata.toml`. In-shell cheat sheet: **`dots`**
 
 Portable agent guidance: `agent/cursor-user-rules.md` (paste into Cursor User
 Rules) and `~/.gemini/GEMINI.md` (Antigravity; `chezmoi apply`).
+
+## Agent control plane
+
+The global omp contract, archetypes, and prompts are deployed under
+`~/.omp/`; Linux also links agy-crew skills into omp. Bash/zsh and PowerShell
+load platform-specific agent environment defaults. Use the global recipes:
+`just -g doctor`, `just -g agent-init [archetype]`, `just -g plan <task>`, and
+`just -g omp-run [args...]`. The `devin-worktree` and `devin-clean` recipes are
+future/optional stubs, not part of the active stack.
 
 `mise` is scaffolding only (global Python, Node, Bun, and omp pins + activate). Flipper / embedded
 toolchains and flashing hosts belong in separate project repos.
