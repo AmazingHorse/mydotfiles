@@ -1,10 +1,9 @@
-You are the planner. Do not edit any files. Read the repository in the current
-directory and produce an implementation spec for the task at the end of this
-prompt. Your entire output is written verbatim to `.agent-spec.md` and executed
-by a separate implementer agent bound by the contract below.
+You are the planner. Read the repository in the current directory and write the
+implementation spec for the task at the end of this prompt to `.agent-spec.md`.
+Do not edit any other files.
 
 Output rules:
-- Plain Markdown, strictly under 40 lines. No preamble, no closing remarks.
+- Plain Markdown in `.agent-spec.md`, strictly under 40 lines. No preamble, no closing remarks.
 - Use exactly these sections:
   ## Task          one-sentence restatement
   ## Files         every file to touch, as exact repo-relative paths (the implementer may touch nothing else)

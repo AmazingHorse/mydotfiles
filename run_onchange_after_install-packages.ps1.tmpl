@@ -11,6 +11,7 @@ $PinnedZoxideVersion = '{{ .packages.zoxide }}'
 $PinnedRipgrepVersion = '{{ .packages.ripgrep }}'
 $PinnedFdVersion = '{{ .packages.fd }}'
 $PinnedGitDeltaVersion = '{{ .packages.git_delta }}'
+$PinnedNerdFontsVersion = '{{ .packages.nerd_fonts }}'
 
 function Get-OhMyPoshInstalledVersion {
     $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
@@ -348,6 +349,92 @@ function Ensure-PinnedMise {
         throw "mise install finished, but version is '$InstalledVersion' (expected '$PinnedVersion')"
     }
 }
+function Ensure-PinnedNerdFont {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PinnedVersion
+    )
+
+    $FontsDirectory = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
+    $VersionMarkerPath = Join-Path $FontsDirectory '.caskaydiacove-nerd-font-version'
+    $RegularFontPath = Join-Path $FontsDirectory 'CaskaydiaCoveNerdFont-Regular.ttf'
+
+    if ((Test-Path -LiteralPath $RegularFontPath) -and (Test-Path -LiteralPath $VersionMarkerPath)) {
+        $InstalledVersion = (Get-Content -LiteralPath $VersionMarkerPath -Raw -ErrorAction SilentlyContinue).Trim()
+        if ($InstalledVersion -eq $PinnedVersion) {
+            return
+        }
+    }
+
+    $CacheDirectory = Get-ManagedDownloadCacheDirectory
+    $WorkDirectory = Join-Path $CacheDirectory (
+        '{0}-{1}-{2}' -f 'nerd-fonts-cascadia', $PinnedVersion, [Guid]::NewGuid().ToString('N')
+    )
+    $AssetName = 'CascadiaCode.zip'
+    $DownloadUrl = "https://github.com/ryanoasis/nerd-fonts/releases/download/v${PinnedVersion}/${AssetName}"
+    $ArchivePath = Join-Path $WorkDirectory $AssetName
+
+    New-Item -ItemType Directory -Force -Path $WorkDirectory | Out-Null
+    New-Item -ItemType Directory -Force -Path $FontsDirectory | Out-Null
+    try {
+        Write-Host "Installing pinned CaskaydiaCove Nerd Font $PinnedVersion from $DownloadUrl"
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchivePath
+        Expand-Archive -LiteralPath $ArchivePath -DestinationPath $WorkDirectory -Force
+
+        Add-Type -AssemblyName PresentationCore -ErrorAction SilentlyContinue
+        $RegistryFontKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
+        $TtfFiles = Get-ChildItem -Path $WorkDirectory -Filter '*.ttf' -Recurse
+        foreach ($Ttf in $TtfFiles) {
+            $DestinationPath = Join-Path $FontsDirectory $Ttf.Name
+            Copy-Item -LiteralPath $Ttf.FullName -Destination $DestinationPath -Force
+
+            $FontUri = New-Object System.Uri($DestinationPath)
+            try {
+                $Gt = New-Object System.Windows.Media.GlyphTypeface($FontUri)
+                $Win32Family = $Gt.Win32FamilyNames.Values | Select-Object -First 1
+                $Win32Face = $Gt.Win32FaceNames.Values | Select-Object -First 1
+                $RegName = if ($Win32Face -eq 'Regular') { "$Win32Family (TrueType)" } else { "$Win32Family $Win32Face (TrueType)" }
+                New-ItemProperty -Path $RegistryFontKey -Name $RegName -Value $DestinationPath -PropertyType String -Force | Out-Null
+                foreach ($Fam in $Gt.FamilyNames.Values) {
+                    if ($Fam -ne $Win32Family) {
+                        $RegName2 = if ($Win32Face -eq 'Regular') { "$Fam (TrueType)" } else { "$Fam $Win32Face (TrueType)" }
+                        New-ItemProperty -Path $RegistryFontKey -Name $RegName2 -Value $DestinationPath -PropertyType String -Force | Out-Null
+                    }
+                }
+            } catch {
+                $BaseName = [System.IO.Path]::GetFileNameWithoutExtension($Ttf.Name)
+                New-ItemProperty -Path $RegistryFontKey -Name "$BaseName (TrueType)" -Value $DestinationPath -PropertyType String -Force | Out-Null
+            }
+        }
+        $Win32Type = @"
+using System;
+using System.Runtime.InteropServices;
+public class FontHelper {
+    [DllImport("gdi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern int AddFontResource(string lpFileName);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+}
+"@
+        Add-Type -TypeDefinition $Win32Type -ErrorAction SilentlyContinue
+        foreach ($InstalledTtf in (Get-ChildItem -Path $FontsDirectory -Filter 'CaskaydiaCove*.ttf' -ErrorAction SilentlyContinue)) {
+            try {
+                [FontHelper]::AddFontResource($InstalledTtf.FullName) | Out-Null
+            } catch {}
+        }
+        try {
+            $HWND_BROADCAST = [IntPtr]0xffff
+            $WM_FONTCHANGE = 0x001D
+            [FontHelper]::SendMessage($HWND_BROADCAST, $WM_FONTCHANGE, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        } catch {}
+        Set-Content -LiteralPath $VersionMarkerPath -Value $PinnedVersion -Force
+    } catch {
+        Write-Warning "Could not install pinned CaskaydiaCove Nerd Font: $_"
+    } finally {
+        Remove-Item -LiteralPath $WorkDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 $LocalBinDirectory = Join-Path $HOME '.local\bin'
 Initialize-ManagedLocalBin -InstallDirectory $LocalBinDirectory
@@ -355,6 +442,7 @@ Initialize-ManagedLocalBin -InstallDirectory $LocalBinDirectory
 Ensure-PinnedGit -PinnedVersion $PinnedGitVersion
 Ensure-PinnedOhMyPosh -PinnedVersion $PinnedOhMyPoshVersion
 Ensure-PinnedMise -PinnedVersion $PinnedMiseVersion -InstallDirectory $LocalBinDirectory
+Ensure-PinnedNerdFont -PinnedVersion $PinnedNerdFontsVersion
 
 if (Get-Command winget -ErrorAction SilentlyContinue) {
     Ensure-WingetPackagePresent -PackageId 'GitHub.cli'

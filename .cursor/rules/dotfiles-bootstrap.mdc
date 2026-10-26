@@ -20,7 +20,7 @@ Human docs: `README.md`. WSL: `wsl-bootstrap.mdc`.
 ## Dependencies / ABI
 - Pin self-installed bins in `.chezmoidata.toml`; float apt (`zsh`, `fzf`, …).
 - Preferred + floor when PPAs lag: `git` + `git_minimum` (≥ 2.35 / `zdiff3`). Ubuntu 20.04 git-core PPA ~2.50 max.
-- Pins: `agy_crew`, `chezmoi`, `oh_my_posh`, `mise`, `just`, `python`, `node`, `bun`, `omp` (mise global defaults), `zoxide`, `ripgrep`, `fd`, `git_delta`, `git`, `git_minimum` — bump in data file only.
+- Pins: `agy_crew`, `chezmoi`, `oh_my_posh`, `mise`, `just`, `python`, `node`, `bun`, `omp` (mise global defaults), `zoxide`, `ripgrep`, `fd`, `git_delta`, `git`, `git_minimum`, `nerd_fonts` — bump in data file only.
 - Portable Cursor User Rules live as a **paste source** in `agent/cursor-user-rules.md` (Cursor does not load `~/.cursor/rules` as global User Rules). Antigravity global: managed `~/.gemini/GEMINI.md`.
 - `mise` is scaffolding only: install + soft-fail activate + global `python`, `node`, `bun`, and `omp` pins. On Windows, install **both** `mise.exe` and `mise-shim.exe` side-by-side (native shim mode). Flipper/ufbt/firmware/dev-board hosts stay in separate project repos (their own `mise.toml`).
 - `agy` is installed on Linux via the official installer with `--dir ~/.local/bin`; it is unpinned and self-updating.

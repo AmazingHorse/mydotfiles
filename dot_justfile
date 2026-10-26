@@ -45,8 +45,8 @@ plan +task:
     #!/usr/bin/env bash
     set -euo pipefail
     agent_home={{quote(agent_home)}}
-    if ! command -v agy >/dev/null 2>&1; then
-        printf 'agy is required to plan tasks; install Antigravity CLI first.\n' >&2
+    if ! command -v omp >/dev/null 2>&1; then
+        printf 'omp is required to plan tasks; install omp first.\n' >&2
         exit 1
     fi
     prompt="$(<"$agent_home/prompts/plan-spec.md")"
@@ -58,18 +58,7 @@ plan +task:
     fi
     prompt+=$'\n\n## Task\n'
     prompt+="$*"
-    if agy --mode plan --print "$prompt" > .agent-spec.md.tmp; then
-        mv .agent-spec.md.tmp .agent-spec.md
-    else
-        status=$?
-        rm -f .agent-spec.md.tmp
-        exit "$status"
-    fi
-    line_count="$(wc -l < .agent-spec.md | tr -d '[:space:]')"
-    if (( line_count >= 40 )); then
-        printf 'Warning: generated spec is %s lines; keep it below 40 lines where possible.\n' "$line_count" >&2
-    fi
-    printf 'Wrote .agent-spec.md (%s lines)\n' "$line_count"
+    exec omp "$prompt"
 
 [no-cd]
 omp-run *args:
