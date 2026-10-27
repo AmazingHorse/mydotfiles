@@ -1,0 +1,14 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- $current := dict -}}
+{{- if trim .chezmoi.stdin -}}
+{{-   $current = fromYaml .chezmoi.stdin -}}
+{{- end -}}
+{{- if and (hasKey $current "bash") (kindIs "map" (get $current "bash")) -}}
+{{-   $bash := get $current "bash" -}}
+{{-   $_ := unset $bash "patterns" -}}
+{{-   if eq (len $bash) 0 -}}
+{{-     $_ := unset $current "bash" -}}
+{{-   end -}}
+{{- end -}}
+{{- $managed := fromYaml (include ".chezmoitemplates/omp-managed-config.yml") -}}
+{{- mergeOverwrite $current $managed | toYaml -}}
