@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
 	commandPrefix,
 	decideSegment,
+	isProtectedPath,
 	matchesPrefix,
 	splitShellSegments,
 	type PermissionLevel,
@@ -101,6 +102,18 @@ describe("matchesPrefix", () => {
 	});
 });
 
+describe("isProtectedPath", () => {
+	test("identifies protected agent configs and permissions", () => {
+		expect(isProtectedPath(`${HOME}/.omp/agent/permissions.json`, CWD, HOME)).toBe(true);
+		expect(isProtectedPath(`${HOME}/.omp/agent/extensions/bootstrap-guard.ts`, CWD, HOME)).toBe(true);
+		expect(isProtectedPath(`${CWD}/.omp/permissions.json`, CWD, HOME)).toBe(true);
+		expect(isProtectedPath(`${CWD}/.omp/permissions.local.json`, CWD, HOME)).toBe(true);
+
+		expect(isProtectedPath(`${HOME}/.omp/scratch/x`, CWD, HOME)).toBe(false);
+		expect(isProtectedPath(`${CWD}/src/index.ts`, CWD, HOME)).toBe(false);
+		expect(isProtectedPath(`${CWD}/package.json`, CWD, HOME)).toBe(false);
+	});
+});
 describe("decideSegment with defaults", () => {
 	const decide = (command: string) => decideSegment(words(command), [defaultsLevel], CWD, HOME);
 
@@ -138,6 +151,31 @@ describe("decideSegment with defaults", () => {
 		});
 	});
 
+	test("self-escalation attempts to agent config are non-persistable asks", () => {
+		expect(decide("echo x > ~/.omp/agent/permissions.json")).toEqual({
+			kind: "ask",
+			rule: "protected agent config: ~/.omp/agent/permissions.json",
+			persistable: false,
+		});
+		expect(decide("cat .omp/permissions.local.json")).toEqual({
+			kind: "ask",
+			rule: "protected agent config: .omp/permissions.local.json",
+			persistable: false,
+		});
+		expect(decide("ls ~/.omp/scratch/x")).toEqual({ kind: "allow" });
+	});
+	test("grep and rg are allowed outside workspace on non-protected paths", () => {
+		expect(decide("grep -rn pattern /usr/share/doc")).toEqual({ kind: "allow" });
+		expect(decide("rg pattern /usr/share/doc")).toEqual({ kind: "allow" });
+	});
+
+	test("grep on protected agent config is still a non-persistable ask", () => {
+		expect(decide("grep pattern ~/.omp/agent/permissions.json")).toEqual({
+			kind: "ask",
+			rule: "protected agent config: ~/.omp/agent/permissions.json",
+			persistable: false,
+		});
+	});
 	test("dangerous flags are non-persistable", () => {
 		expect(decide("rg foo --pre cat")).toEqual({
 			kind: "ask",
@@ -188,5 +226,31 @@ describe("decideSegment precedence", () => {
 	test("deny at any level beats session allow", () => {
 		const levels = [level("session", { allow: ["npm test"] }), level("defaults", { deny: ["npm"] })];
 		expect(decideSegment(words("npm test"), levels, CWD, HOME)).toEqual({ kind: "deny", rule: "npm" });
+	});
+	test("project level allow is ignored; falls back to defaults ask", () => {
+		const levels = [
+			level("project", { allow: ["curl"] }),
+			defaultsLevel,
+		];
+		expect(decideSegment(words("curl https://example.com"), levels, CWD, HOME)).toEqual({
+			kind: "ask",
+			rule: "curl",
+			persistable: true,
+		});
+	});
+	test("allowedPaths permits otherwise unallowed outside paths", () => {
+		const levels = [
+			level("projectLocal", { allowedPaths: ["/usr/local/share"] }),
+			defaultsLevel,
+		];
+		expect(decideSegment(words("ls /usr/local/share"), levels, CWD, HOME)).toEqual({ kind: "allow" });
+	});
+
+	test("allowOutside permits command to access outside paths", () => {
+		const levels = [
+			level("session", { allow: ["cat"], allowOutside: ["cat"] }),
+			defaultsLevel,
+		];
+		expect(decideSegment(words("cat /usr/share/doc/README"), levels, CWD, HOME)).toEqual({ kind: "allow" });
 	});
 });

@@ -11,7 +11,7 @@ const TRUNCATION_MARKER = "[bootstrap-guard: truncated ";
 // Native write/edit tools tier every local path as "write", so approvalMode "write"
 // would auto-approve edits anywhere on disk. This set is gated to the workspace below.
 const FILE_WRITE_TOOLS = new Set(["write", "edit", "ast_edit"]);
-const AGENT_SCRATCH_ROOT = path.join(os.homedir(), ".omp");
+const AGENT_SCRATCH_ROOT = path.join(os.homedir(), ".omp", "scratch");
 
 /*
  * ---------------------------------------------------------------------------
@@ -25,14 +25,24 @@ const AGENT_SCRATCH_ROOT = path.join(os.homedir(), ".omp");
  * lowest precedence:
  *   session      in-memory, allow-only, granted from the prompt
  *   projectLocal <cwd>/.omp/permissions.local.json   (personal, gitignored)
- *   project      <cwd>/.omp/permissions.json         (shareable)
+ *   project      <cwd>/.omp/permissions.json         (shareable, ask/deny only: allow is ignored)
  *   user         ~/.omp/agent/permissions.json       (written by prompts)
  *   defaults     ~/.omp/agent/permissions.defaults.json (chezmoi-managed)
  * A deny match at any level wins outright. A matched ask rule, an unrecognized
  * command, or a hard check (shell reinterpretation, dangerous flags, path
- * escape) produces one prompt per bash call. Files are re-read on every call.
+ * escape, or protected agent config) produces one prompt per bash call. Files
+ * are re-read on every call.
+ * Subagents (task tool) run with ctx.hasUI = false; interactive prompts block,
+ * so subagents can only run commands pre-allowed by session, projectLocal, user,
+ * or defaults.
  */
-export type PermissionRules = { allow: string[]; ask: string[]; deny: string[] };
+export type PermissionRules = {
+	allow: string[];
+	ask: string[];
+	deny: string[];
+	allowOutside?: string[];
+	allowedPaths?: string[];
+};
 export type PermissionLevel = {
 	name: "session" | "projectLocal" | "project" | "user" | "defaults";
 	rules: PermissionRules;
@@ -270,9 +280,63 @@ function resolvePathWord(word: string, cwd: string, home: string): string {
 	expanded = expanded.split("$HOME").join(home).split("${HOME}").join(home);
 	return path.resolve(cwd, expanded);
 }
+function isWithinRoot(target: string, root: string): boolean {
+	const relative = path.relative(root, target);
+	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
 
-function workspaceRoots(cwd: string, home: string): string[] {
-	return [cwd, realpathOrSelf(cwd), path.join(home, ".omp")];
+function realpathOrSelf(directory: string): string {
+	try {
+		return fs.realpathSync(directory);
+	} catch {
+		return directory;
+	}
+}
+
+export function isProtectedPath(resolved: string, cwd: string, home: string): boolean {
+	const normalized = path.resolve(resolved);
+	const agentDir = path.resolve(home, ".omp", "agent");
+	if (isWithinRoot(normalized, agentDir)) return true;
+
+	const projectPerms = path.resolve(cwd, ".omp", "permissions.json");
+	const projectLocalPerms = path.resolve(cwd, ".omp", "permissions.local.json");
+	if (normalized === projectPerms || normalized === projectLocalPerms) return true;
+
+	const realCwd = realpathOrSelf(cwd);
+	if (realCwd !== cwd) {
+		if (
+			normalized === path.resolve(realCwd, ".omp", "permissions.json") ||
+			normalized === path.resolve(realCwd, ".omp", "permissions.local.json")
+		) {
+			return true;
+		}
+	}
+
+	const realHome = realpathOrSelf(home);
+	if (realHome !== home && isWithinRoot(normalized, path.resolve(realHome, ".omp", "agent"))) {
+		return true;
+	}
+
+	const realTarget = realpathOrSelf(normalized);
+	if (realTarget !== normalized) {
+		if (isWithinRoot(realTarget, agentDir)) return true;
+		if (realHome !== home && isWithinRoot(realTarget, path.resolve(realHome, ".omp", "agent"))) return true;
+		if (realTarget === projectPerms || realTarget === projectLocalPerms) return true;
+		if (realCwd !== cwd) {
+			if (
+				realTarget === path.resolve(realCwd, ".omp", "permissions.json") ||
+				realTarget === path.resolve(realCwd, ".omp", "permissions.local.json")
+			) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+function workspaceRoots(cwd: string, home: string, extraRoots: string[] = []): string[] {
+	return [cwd, realpathOrSelf(cwd), path.join(home, ".omp", "scratch"), ...extraRoots];
 }
 
 function isWithinRoots(target: string, roots: string[]): boolean {
@@ -289,7 +353,13 @@ function hasShellDashC(words: string[]): boolean {
 }
 
 // Checks no allow rule may satisfy: reinterpretation, dangerous flags, path escape.
-function hardCheckReason(words: string[], cwd: string, home: string): string | undefined {
+function hardCheckReason(
+	words: string[],
+	cwd: string,
+	home: string,
+	allowOutsideRules: string[] = [],
+	extraRoots: string[] = [],
+): string | undefined {
 	const first = words[0];
 	if (first === "eval" || first === "xargs") return `reinterpreting command: ${first}`;
 	if (SHELL_INTERPRETERS.has(first) && hasShellDashC(words)) return `shell -c: ${first}`;
@@ -305,20 +375,33 @@ function hardCheckReason(words: string[], cwd: string, home: string): string | u
 	if (first === "fd" && words.some(word => word === "-x" || word === "-X")) return "fd -x/-X";
 	if (first === "git" && words[1] === "-c") return "git -c";
 
-	const roots = workspaceRoots(cwd, home);
 	const candidates = words.flatMap(word => {
 		const assignedValue = word.includes("=") ? word.slice(word.indexOf("=") + 1) : undefined;
 		return assignedValue ? [word, assignedValue] : [word];
 	});
+
 	for (const word of candidates) {
-		if (!looksLikePath(word)) continue;
+		if (word.startsWith("-") || word.length === 0) continue;
 		const resolved = resolvePathWord(word, cwd, home);
-		if (resolved === "/dev/null" || resolved === "/tmp" || resolved.startsWith("/tmp/")) continue;
-		if (isWithinRoots(resolved, roots)) continue;
-		return `path outside workspace: ${word}`;
+		if (isProtectedPath(resolved, cwd, home)) {
+			return `protected agent config: ${word}`;
+		}
+	}
+
+	const isAllowedOutside = allowOutsideRules.some(rule => matchesPrefix(words, rule));
+	if (!isAllowedOutside) {
+		const roots = workspaceRoots(cwd, home, extraRoots);
+		for (const word of candidates) {
+			if (!looksLikePath(word)) continue;
+			const resolved = resolvePathWord(word, cwd, home);
+			if (resolved === "/dev/null" || resolved === "/tmp" || resolved.startsWith("/tmp/")) continue;
+			if (isWithinRoots(resolved, roots)) continue;
+			return `path outside workspace: ${word}`;
+		}
 	}
 	return undefined;
 }
+
 
 export function decideSegment(
 	words: string[],
@@ -334,14 +417,16 @@ export function decideSegment(
 		}
 	}
 
-	const hardReason = hardCheckReason(words, cwd, home);
+	const allowOutsideRules = levels.flatMap(l => l.rules.allowOutside ?? []);
+	const extraRoots = levels.flatMap(l => (l.rules.allowedPaths ?? []).map(p => resolvePathWord(p, cwd, home)));
+	const hardReason = hardCheckReason(words, cwd, home, allowOutsideRules, extraRoots);
 	if (hardReason !== undefined) return { kind: "ask", rule: hardReason, persistable: false };
-
 	for (const level of levels) {
 		let allowLength = -1;
 		let askLength = -1;
 		let askRule = "";
-		for (const rule of level.rules.allow) {
+		const allowRules = level.name === "project" ? [] : level.rules.allow;
+		for (const rule of allowRules) {
 			if (matchesPrefix(words, rule)) {
 				allowLength = Math.max(allowLength, rule.split(/\s+/).length);
 			}
@@ -363,7 +448,7 @@ export function decideSegment(
 }
 
 function emptyRules(): PermissionRules {
-	return { allow: [], ask: [], deny: [] };
+	return { allow: [], ask: [], deny: [], allowOutside: [], allowedPaths: [] };
 }
 
 function readRulesFile(filePath: string): PermissionRules {
@@ -371,11 +456,17 @@ function readRulesFile(filePath: string): PermissionRules {
 		const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
 		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return emptyRules();
 		const record = parsed as Record<string, unknown>;
-		const list = (key: "allow" | "ask" | "deny") =>
+		const list = (key: string) =>
 			Array.isArray(record[key])
-				? record[key].filter((entry): entry is string => typeof entry === "string")
+				? (record[key] as unknown[]).filter((entry): entry is string => typeof entry === "string")
 				: [];
-		return { allow: list("allow"), ask: list("ask"), deny: list("deny") };
+		return {
+			allow: list("allow"),
+			ask: list("ask"),
+			deny: list("deny"),
+			allowOutside: list("allowOutside"),
+			allowedPaths: list("allowedPaths"),
+		};
 	} catch {
 		return emptyRules();
 	}
@@ -397,17 +488,42 @@ function defaultsPath(home: string): string {
 	return path.join(home, ".omp", "agent", "permissions.defaults.json");
 }
 
-function loadPermissionLevels(cwd: string, home: string, sessionAllow: ReadonlySet<string>): PermissionLevel[] {
+export function loadPermissionLevels(
+	cwd: string,
+	home: string,
+	sessionAllow: ReadonlySet<string> = new Set(),
+	sessionAllowOutside: ReadonlySet<string> = new Set(),
+	sessionAllowedPaths: ReadonlySet<string> = new Set(),
+): PermissionLevel[] {
+	const projectRules = readRulesFile(projectPath(cwd));
 	return [
-		{ name: "session", rules: { allow: [...sessionAllow], ask: [], deny: [] } },
+		{
+			name: "session",
+			rules: {
+				allow: [...sessionAllow],
+				ask: [],
+				deny: [],
+				allowOutside: [...sessionAllowOutside],
+				allowedPaths: [...sessionAllowedPaths],
+			},
+		},
 		{ name: "projectLocal", rules: readRulesFile(projectLocalPath(cwd)) },
-		{ name: "project", rules: readRulesFile(projectPath(cwd)) },
+		{
+			name: "project",
+			rules: {
+				allow: [],
+				ask: projectRules.ask,
+				deny: projectRules.deny,
+				allowOutside: [],
+				allowedPaths: [],
+			},
+		},
 		{ name: "user", rules: readRulesFile(userPath(home)) },
 		{ name: "defaults", rules: readRulesFile(defaultsPath(home)) },
 	];
 }
 
-function appendAllowRules(filePath: string, prefixes: string[]): void {
+function appendRuleEntries(filePath: string, key: "allow" | "allowOutside" | "allowedPaths", entries: string[]): void {
 	let record: Record<string, unknown> = {};
 	try {
 		const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -417,10 +533,10 @@ function appendAllowRules(filePath: string, prefixes: string[]): void {
 	} catch {
 		// Missing or invalid file: start from an empty object.
 	}
-	const existing = Array.isArray(record.allow)
-		? record.allow.filter((entry): entry is string => typeof entry === "string")
+	const existing = Array.isArray(record[key])
+		? (record[key] as unknown[]).filter((entry): entry is string => typeof entry === "string")
 		: [];
-	record.allow = [...new Set([...existing, ...prefixes])];
+	record[key] = [...new Set([...existing, ...entries])];
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
 	fs.writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`);
 }
@@ -436,18 +552,21 @@ async function handleBashCall(
 	input: { command?: unknown; cwd?: unknown },
 	ctx: ExtensionContext,
 	sessionAllow: Set<string>,
+	sessionAllowOutside: Set<string>,
+	sessionAllowedPaths: Set<string>,
 ): Promise<ToolCallEventResult | void> {
 	const command = typeof input.command === "string" ? input.command : "";
 	const home = os.homedir();
 	const cwd = ctx.cwd;
 	const { segments, complex } = splitShellSegments(command);
-	const levels = loadPermissionLevels(cwd, home, sessionAllow);
+	const levels = loadPermissionLevels(cwd, home, sessionAllow, sessionAllowOutside, sessionAllowedPaths);
+	const extraRoots = levels.flatMap(l => (l.rules.allowedPaths ?? []).map(p => resolvePathWord(p, cwd, home)));
 
 	const decisions = segments.map(words => ({ words, decision: decideSegment(words, levels, cwd, home) }));
 	const pendingDecisions: SegmentDecision[] = [];
 	if (typeof input.cwd === "string" && input.cwd.length > 0 && !input.cwd.includes("://")) {
 		const resolvedCwd = resolvePathWord(input.cwd, cwd, home);
-		if (!isWithinRoots(resolvedCwd, workspaceRoots(cwd, home))) {
+		if (!isWithinRoots(resolvedCwd, workspaceRoots(cwd, home, extraRoots))) {
 			pendingDecisions.push({
 				kind: "ask",
 				rule: `bash cwd outside workspace: ${input.cwd}`,
@@ -476,8 +595,16 @@ async function handleBashCall(
 		};
 	}
 
-	const persistable =
+	const hasProtected = pendingDecisions.some(
+		d => d.kind === "ask" && d.rule.startsWith("protected agent config:"),
+	);
+	const hasOutside = pendingDecisions.some(
+		d => d.kind === "ask" && (d.rule.startsWith("path outside workspace:") || d.rule.startsWith("bash cwd outside workspace:")),
+	);
+	const normalPersistable =
 		!complex &&
+		!hasProtected &&
+		!hasOutside &&
 		pendingDecisions.length > 0 &&
 		pendingDecisions.every(
 			decision => (decision.kind === "ask" || decision.kind === "unmatched") && decision.persistable,
@@ -496,31 +623,62 @@ async function handleBashCall(
 	const sessionLabel = `Yes, for this session: ${prefixes.join(", ")}`;
 	const projectLabel = `Yes, always in this project: ${prefixes.join(", ")}`;
 	const globalLabel = `Yes, always in all projects: ${prefixes.join(", ")}`;
-	const options =
-		persistable && prefixes.length > 0
-			? [onceLabel, sessionLabel, projectLabel, globalLabel, noLabel]
-			: [onceLabel, noLabel];
+
+	const sessionOutsideLabel = `Yes, for this session: allow ${prefixes.join(", ")} outside workspace`;
+	const projectOutsideLabel = `Yes, always in this project: allow ${prefixes.join(", ")} outside workspace`;
+	const globalOutsideLabel = `Yes, always in all projects: allow ${prefixes.join(", ")} outside workspace`;
+
+	let options = [onceLabel, noLabel];
+	if (!complex && !hasProtected && prefixes.length > 0) {
+		if (hasOutside) {
+			options = [onceLabel, sessionOutsideLabel, projectOutsideLabel, globalOutsideLabel, noLabel];
+		} else if (normalPersistable) {
+			options = [onceLabel, sessionLabel, projectLabel, globalLabel, noLabel];
+		}
+	}
 
 	const choice = await ctx.ui.select(`Run command?\n${command}\n${why}`, options);
 	if (choice === onceLabel) return;
-	if (persistable && choice === sessionLabel) {
+	if (choice === sessionLabel) {
 		for (const prefix of prefixes) sessionAllow.add(prefix);
 		return;
 	}
-	if (persistable && choice === projectLabel) {
-		appendAllowRules(projectLocalPath(cwd), prefixes);
+	if (choice === projectLabel) {
+		appendRuleEntries(projectLocalPath(cwd), "allow", prefixes);
 		return;
 	}
-	if (persistable && choice === globalLabel) {
-		appendAllowRules(userPath(home), prefixes);
+	if (choice === globalLabel) {
+		appendRuleEntries(userPath(home), "allow", prefixes);
+		return;
+	}
+	if (choice === sessionOutsideLabel) {
+		for (const prefix of prefixes) {
+			sessionAllow.add(prefix);
+			sessionAllowOutside.add(prefix);
+		}
+		return;
+	}
+	if (choice === projectOutsideLabel) {
+		appendRuleEntries(projectLocalPath(cwd), "allow", prefixes);
+		appendRuleEntries(projectLocalPath(cwd), "allowOutside", prefixes);
+		for (const prefix of prefixes) {
+			sessionAllow.add(prefix);
+			sessionAllowOutside.add(prefix);
+		}
+		return;
+	}
+	if (choice === globalOutsideLabel) {
+		appendRuleEntries(userPath(home), "allow", prefixes);
+		appendRuleEntries(userPath(home), "allowOutside", prefixes);
+		for (const prefix of prefixes) {
+			sessionAllow.add(prefix);
+			sessionAllowOutside.add(prefix);
+		}
 		return;
 	}
 	return { block: true, reason: `User denied: ${command}` };
 }
-
 /*
- * ---------------------------------------------------------------------------
- * friend-programmer (fp) middleware hook point
  * ---------------------------------------------------------------------------
  * When the `fp` CLI lands, compactToolResult() becomes the seam: instead of a
  * blind head-truncation, pipe the old tool result through
@@ -595,19 +753,6 @@ function resolveTargetPath(rawPath: string, cwd: string): string | undefined {
 	return path.resolve(cwd, expanded);
 }
 
-function isWithinRoot(target: string, root: string): boolean {
-	const relative = path.relative(root, target);
-	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-function realpathOrSelf(directory: string): string {
-	try {
-		return fs.realpathSync(directory);
-	} catch {
-		return directory;
-	}
-}
-
 function collectWriteTargets(toolName: string, input: Record<string, unknown>): string[] {
 	if (!FILE_WRITE_TOOLS.has(toolName)) return [];
 	const targets: string[] = [];
@@ -620,21 +765,58 @@ function collectWriteTargets(toolName: string, input: Record<string, unknown>): 
 
 export default function (pi: ExtensionAPI) {
 	const sessionAllow = new Set<string>();
+	const sessionAllowOutside = new Set<string>();
+	const sessionAllowedPaths = new Set<string>();
 	const sessionWriteDirs = new Set<string>();
+
+	pi.on("session_start", (_event, ctx) => {
+		if (ctx.hasUI) {
+			ctx.ui.notify("bootstrap-guard: permission shim active");
+		}
+	});
 
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName === "bash") {
-			return await handleBashCall(event.input, ctx, sessionAllow);
+			return await handleBashCall(event.input, ctx, sessionAllow, sessionAllowOutside, sessionAllowedPaths);
 		}
 
 		const rawTargets = collectWriteTargets(event.toolName, event.input as Record<string, unknown>);
 		if (rawTargets.length === 0) return;
 
-		const allowedRoots = [ctx.cwd, realpathOrSelf(ctx.cwd), AGENT_SCRATCH_ROOT];
-		const outsideTargets = rawTargets
+		const home = os.homedir();
+		const resolvedTargets = rawTargets
 			.map(rawTarget => resolveTargetPath(rawTarget, ctx.cwd))
-			.filter((target): target is string => target !== undefined)
-			.filter(target => !isWithinRoots(target, allowedRoots));
+			.filter((target): target is string => target !== undefined);
+
+		const protectedTargets = resolvedTargets.filter(target => isProtectedPath(target, ctx.cwd, home));
+		if (protectedTargets.length > 0) {
+			const summary = `${event.toolName} targets protected agent config:\n${protectedTargets.join("\n")}`;
+			if (!ctx.hasUI) {
+				return {
+					block: true,
+					reason: `bootstrap-guard: ${summary}\nNo UI to confirm; ask the user to run it.`,
+				};
+			}
+			const onceLabel = "Yes, once";
+			const choice = await ctx.ui.select(`Protected agent config operation\n${summary}`, [
+				onceLabel,
+				"No",
+			]);
+			if (choice === onceLabel) return;
+			return { block: true, reason: `bootstrap-guard: user declined ${summary}` };
+		}
+
+		const levels = loadPermissionLevels(ctx.cwd, home, sessionAllow, sessionAllowOutside, sessionAllowedPaths);
+		const persistentAllowedPaths = levels.flatMap(l => (l.rules.allowedPaths ?? []).map(p => resolvePathWord(p, ctx.cwd, home)));
+		const allowedRoots = [
+			ctx.cwd,
+			realpathOrSelf(ctx.cwd),
+			AGENT_SCRATCH_ROOT,
+			...persistentAllowedPaths,
+			...sessionAllowedPaths,
+			...sessionWriteDirs,
+		];
+		const outsideTargets = resolvedTargets.filter(target => !isWithinRoots(target, allowedRoots));
 		if (outsideTargets.length === 0) return;
 
 		const outsideDirs = [...new Set(outsideTargets.map(target => path.dirname(target)))];
@@ -646,13 +828,27 @@ export default function (pi: ExtensionAPI) {
 		}
 		const onceLabel = "Yes, once";
 		const sessionLabel = `Yes, for this session: ${outsideDirs.join(", ")}`;
+		const projectLabel = `Yes, always in this project: ${outsideDirs.join(", ")}`;
+		const globalLabel = `Yes, always in all projects: ${outsideDirs.join(", ")}`;
 		const choice = await ctx.ui.select(`Out-of-workspace operation\n${summary}`, [
 			onceLabel,
 			sessionLabel,
+			projectLabel,
+			globalLabel,
 			"No",
 		]);
 		if (choice === onceLabel) return;
 		if (choice === sessionLabel) {
+			for (const dir of outsideDirs) sessionWriteDirs.add(dir);
+			return;
+		}
+		if (choice === projectLabel) {
+			appendRuleEntries(projectLocalPath(ctx.cwd), "allowedPaths", outsideDirs);
+			for (const dir of outsideDirs) sessionWriteDirs.add(dir);
+			return;
+		}
+		if (choice === globalLabel) {
+			appendRuleEntries(userPath(home), "allowedPaths", outsideDirs);
 			for (const dir of outsideDirs) sessionWriteDirs.add(dir);
 			return;
 		}
