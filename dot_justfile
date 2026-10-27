@@ -149,6 +149,26 @@ run-omp model="" *args:
     exec "${cmd[@]}"
 
 alias omp-run := run-omp
+[no-cd]
+omp-sandbox *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v bwrap >/dev/null 2>&1; then
+        printf 'bwrap is missing; install bubblewrap to run omp in sandbox mode.\n' >&2
+        exit 1
+    fi
+    mkdir -p "$HOME/.omp" "$HOME/.cache" "$HOME/.local/share/mise"
+    exec bwrap --ro-bind / / \
+        --bind "$PWD" "$PWD" \
+        --bind "$HOME/.omp" "$HOME/.omp" \
+        --bind "$HOME/.cache" "$HOME/.cache" \
+        --bind "$HOME/.local/share/mise" "$HOME/.local/share/mise" \
+        --dev /dev \
+        --proc /proc \
+        --tmpfs /tmp \
+        --die-with-parent \
+        omp "$@"
+
 
 [no-cd]
 worktree-new branch:

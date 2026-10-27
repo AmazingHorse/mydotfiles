@@ -4,12 +4,14 @@
     "pwd",
     "ls",
     "rg",
+    "grep",
     "fd",
     "wc",
     "head",
     "tail",
     "echo",
     "which",
+    "jq",
     "file",
     "stat",
     "git status",
@@ -85,5 +87,10 @@
     "rsync",
     "chezmoi apply"
   ],
-  "deny": []
+  "deny": [],
+  "allowOutside": [
+    "grep",
+    "rg"
+  ],
+  "allowedPaths": []
 }

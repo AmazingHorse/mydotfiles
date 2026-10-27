@@ -447,6 +447,7 @@ Ensure-PinnedNerdFont -PinnedVersion $PinnedNerdFontsVersion
 if (Get-Command winget -ErrorAction SilentlyContinue) {
     Ensure-WingetPackagePresent -PackageId 'GitHub.cli'
     Ensure-WingetPackagePresent -PackageId 'junegunn.fzf'
+    Ensure-WingetPackagePresent -PackageId 'jqlang.jq'
     Ensure-WingetPackagePresent -PackageId 'Casey.Just' -PinnedVersion $PinnedJustVersion
     Ensure-WingetPackagePresent -PackageId 'ajeetdsouza.zoxide' -PinnedVersion $PinnedZoxideVersion
     Ensure-WingetPackagePresent -PackageId 'BurntSushi.ripgrep.MSVC' -PinnedVersion $PinnedRipgrepVersion
