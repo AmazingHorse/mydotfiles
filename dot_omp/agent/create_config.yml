@@ -1,5 +1,0 @@
-# Seeded once by chezmoi; omp owns this file after creation.
-lsp:
-  enabled: true
-debug:
-  enabled: true  # DAP debugger tool

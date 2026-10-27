@@ -10,6 +10,59 @@ default:
     just --justfile {{quote(justfile())}} --list
 
 [no-cd]
+seed lang="" archetype="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    agent_home={{quote(agent_home)}}
+    lang="${1:-}"
+    archetype="${2:-}"
+    seeds_dir="$agent_home/seeds"
+    archetypes_dir="$agent_home/archetypes"
+    list_seeds() {
+        printf 'Available seeds:\n'
+        for seed_file in "$seeds_dir"/*.md; do
+            [[ -f "$seed_file" ]] || continue
+            basename "$seed_file" .md
+        done
+    }
+    if [[ -z "$lang" ]]; then
+        list_seeds
+        exit 0
+    fi
+    seed_file="$seeds_dir/$lang.md"
+    if [[ ! -f "$seed_file" ]]; then
+        printf 'Unknown seed: %s\n' "$lang" >&2
+        list_seeds >&2
+        exit 1
+    fi
+    if [[ -n "$archetype" ]]; then
+        archetype_file="$archetypes_dir/$archetype.md"
+        if [[ ! -f "$archetype_file" ]]; then
+            printf 'Unknown archetype: %s\n' "$archetype" >&2
+            printf 'Available archetypes:\n' >&2
+            for a_file in "$archetypes_dir"/*.md; do
+                [[ -f "$a_file" ]] || continue
+                basename "$a_file" .md >&2
+            done
+            exit 1
+        fi
+    fi
+    if [[ -e ./.agent-profile.md ]]; then
+        printf 'Refusing to overwrite .agent-profile.md\n' >&2
+        exit 1
+    fi
+    cp "$seed_file" ./.agent-profile.md
+    if [[ -n "$archetype" ]]; then
+        {
+            printf '\n\n## Archetype\n'
+            cat "$archetypes_dir/$archetype.md"
+        } >> ./.agent-profile.md
+        printf 'Created .agent-profile.md from seed %s and archetype %s\n' "$lang" "$archetype"
+    else
+        printf 'Created .agent-profile.md from seed %s\n' "$lang"
+    fi
+
+[no-cd]
 agent-init archetype="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -41,39 +94,129 @@ agent-init archetype="":
     printf 'Created .agent-profile.md from archetype %s\n' "$archetype"
 
 [no-cd]
-plan +task:
+git-guard:
     #!/usr/bin/env bash
     set -euo pipefail
-    agent_home={{quote(agent_home)}}
-    if ! command -v omp >/dev/null 2>&1; then
-        printf 'omp is required to plan tasks; install omp first.\n' >&2
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        printf 'Error: not inside a git work tree.\n' >&2
         exit 1
     fi
-    prompt="$(<"$agent_home/prompts/plan-spec.md")"
-    prompt+=$'\n\n## Global contract\n'
-    prompt+="$(<"$agent_home/agent/AGENTS.md")"
-    if [[ -f ./.agent-profile.md ]]; then
-        prompt+=$'\n\n## Project profile\n'
-        prompt+="$(<./.agent-profile.md)"
+    current_branch="$(git branch --show-current 2>/dev/null || true)"
+    if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+        printf 'Error: on %s branch. Switch to a feature/task branch first.\n' "$current_branch" >&2
+        exit 1
     fi
-    prompt+=$'\n\n## Task\n'
-    prompt+="$*"
-    exec omp "$prompt"
+    if ! git check-ignore -q .agent-spec.md 2>/dev/null || ! git check-ignore -q .agent-profile.md 2>/dev/null; then
+        printf 'Error: .agent-spec.md and .agent-profile.md must be ignored by git.\n' >&2
+        exit 1
+    fi
+    dirty_count="$(git status --porcelain | grep -c . || true)"
+    if [[ "$dirty_count" -gt 0 ]]; then
+        printf 'Warning: %s uncommitted file(s) in work tree.\n' "$dirty_count" >&2
+    fi
 
 [no-cd]
-omp-run *args:
+run-omp model="" *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! -f ./.agent-spec.md ]]; then
-        printf 'Missing .agent-spec.md; run: just -g plan <task>\n' >&2
+    just --justfile {{quote(justfile())}} git-guard
+    if [[ ! -s ./.agent-spec.md ]]; then
+        printf 'Missing or empty .agent-spec.md; run omp or generate a spec first.\n' >&2
         exit 1
     fi
     if ! command -v omp >/dev/null 2>&1; then
-        printf 'omp is required to run the agent spec.\n' >&2
+        printf 'omp is not installed; install it with mise use -g npm:@oh-my-pi/pi-coding-agent\n' >&2
         exit 1
     fi
-    exec omp "$@" @.agent-spec.md
+    model="${1:-}"
+    shift || true
+    if [[ "$model" == -* ]]; then
+        set -- "$model" "$@"
+        model=""
+    fi
+    for arg in "$@"; do
+        if [[ "$arg" == "-c" || "$arg" == "--continue" || "$arg" == "-r" || "$arg" == "--resume" ]]; then
+            printf 'Error: fresh session required; %s is not permitted in run-omp.\n' "$arg" >&2
+            exit 1
+        fi
+    done
+    effective_model="${model:-${OMP_MODEL:-}}"
+    cmd=(omp)
+    if [[ -n "$effective_model" ]]; then
+        cmd+=(--model "$effective_model")
+    fi
+    cmd+=("$@" @.agent-spec.md)
+    exec "${cmd[@]}"
 
+alias omp-run := run-omp
+[no-cd]
+omp-sandbox *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v bwrap >/dev/null 2>&1; then
+        printf 'bwrap is missing; install bubblewrap to run omp in sandbox mode.\n' >&2
+        exit 1
+    fi
+    mkdir -p "$HOME/.omp" "$HOME/.cache" "$HOME/.local/share/mise"
+    exec bwrap --ro-bind / / \
+        --bind "$PWD" "$PWD" \
+        --bind "$HOME/.omp" "$HOME/.omp" \
+        --bind "$HOME/.cache" "$HOME/.cache" \
+        --bind "$HOME/.local/share/mise" "$HOME/.local/share/mise" \
+        --dev /dev \
+        --proc /proc \
+        --tmpfs /tmp \
+        --die-with-parent \
+        omp "$@"
+
+
+[no-cd]
+worktree-new branch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    branch={{quote(branch)}}
+    if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+        printf 'Run worktree-new inside a git repository.\n' >&2
+        exit 1
+    fi
+    safe_branch="${branch//\//-}"
+    worktree_dir="$(dirname "$repo_root")/wt-$safe_branch"
+    if [[ -d "$worktree_dir" ]]; then
+        printf 'Worktree directory already exists: %s\n' "$worktree_dir" >&2
+        exit 1
+    fi
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+        git worktree add "$worktree_dir" "$branch"
+    else
+        git worktree add -b "$branch" "$worktree_dir" HEAD
+    fi
+    if [[ -f ./.agent-spec.md ]]; then
+        cp ./.agent-spec.md "$worktree_dir/.agent-spec.md"
+    fi
+    if [[ -f ./.agent-profile.md ]]; then
+        cp ./.agent-profile.md "$worktree_dir/.agent-profile.md"
+    fi
+    printf '%s\n' "$worktree_dir"
+
+[no-cd]
+worktree-rm branch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    branch={{quote(branch)}}
+    if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+        printf 'Run worktree-rm inside a git repository.\n' >&2
+        exit 1
+    fi
+    safe_branch="${branch//\//-}"
+    worktree_dir="$(dirname "$repo_root")/wt-$safe_branch"
+    if [[ ! -d "$worktree_dir" ]]; then
+        printf 'Worktree directory does not exist: %s\n' "$worktree_dir" >&2
+        exit 1
+    fi
+    if ! git worktree remove "$worktree_dir"; then
+        printf 'Failed to remove worktree %s. If there are uncommitted changes, commit/stash them or remove manually.\n' "$worktree_dir" >&2
+        exit 1
+    fi
 [no-cd]
 doctor:
     #!/usr/bin/env bash
@@ -112,6 +255,30 @@ doctor:
             skill_count=$((skill_count + 1))
         done
         report_value skills "$skill_count entries"
+    fi
+    printf '\nagent configuration:\n'
+    config_file="$agent_home/agent/config.yml"
+    if [[ -f "$config_file" ]] && grep -q 'approvalMode: write' "$config_file"; then
+        report_value "approvalMode" "write (configured)"
+    else
+        report_value "approvalMode" "missing or not write"
+    fi
+    bootstrap_guard="$agent_home/agent/extensions/bootstrap-guard.ts"
+    if [[ -f "$bootstrap_guard" ]]; then
+        report_value "bootstrap-guard" "present"
+    else
+        report_value "bootstrap-guard" "missing"
+    fi
+    seeds_dir="$agent_home/seeds"
+    if [[ ! -d "$seeds_dir" ]]; then
+        report_value "seeds" "missing"
+    else
+        seed_count=0
+        for seed_file in "$seeds_dir"/*.md; do
+            [[ -f "$seed_file" ]] || continue
+            seed_count=$((seed_count + 1))
+        done
+        report_value "seeds" "$seed_count found"
     fi
 
 [no-cd]

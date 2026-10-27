@@ -15,3 +15,5 @@ Desktop.ini
 # Agent control plane (per-project drop-ins)
 .agent-spec.md
 .agent-profile.md
+plans/*.local.md
+.omp/permissions.local.json

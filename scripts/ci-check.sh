@@ -107,7 +107,11 @@ for script_template in \
 done
 
 echo "==> Verify agent configuration files"
-python3 -m json.tool dot_omp/agent/mcp.json >/dev/null
+python3 -m json.tool dot_omp/private_agent/mcp.json >/dev/null
+python3 -m json.tool dot_omp/private_agent/permissions.defaults.json >/dev/null
+if command -v bun >/dev/null 2>&1; then
+    bun test scripts/omp-permissions.test.ts
+fi
 if command -v just >/dev/null 2>&1; then
     just --justfile dot_justfile --list >/dev/null
 else
