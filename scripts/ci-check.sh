@@ -36,9 +36,14 @@ else
 fi
 
 echo "==> Chezmoi dry-run (exclude scripts)"
-config_directory="${HOME}/.config/chezmoi"
-mkdir -p "${config_directory}"
-cat > "${config_directory}/chezmoi.toml" <<'EOF'
+destination_directory="$(mktemp -d)"
+cleanup() {
+    rm -rf "${destination_directory}"
+}
+trap cleanup EXIT
+
+ci_config="${destination_directory}/chezmoi.toml"
+cat > "${ci_config}" <<'EOF'
 umask = 0o022
 
 [data]
@@ -46,11 +51,9 @@ gitName = "CI User"
 gitEmail = "ci@example.com"
 EOF
 
-destination_directory="$(mktemp -d)"
-cleanup() {
-    rm -rf "${destination_directory}"
+chezmoi() {
+    command chezmoi --config="${ci_config}" "$@"
 }
-trap cleanup EXIT
 
 render_directory="${destination_directory}/rendered"
 mkdir -p "${render_directory}"
@@ -91,12 +94,14 @@ rendered_notice_script="${render_directory}/zz-wsl-notice.sh"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/run_after_zz-wsl-notice.sh.tmpl" \
     > "${rendered_notice_script}"
-bash -n "${rendered_install_script}"
-bash -n "${rendered_skill_script}"
-bash -n "${rendered_notice_script}"
-if command -v shellcheck >/dev/null 2>&1; then
-    shellcheck --severity=warning "${rendered_install_script}" "${rendered_skill_script}" "${rendered_notice_script}"
-fi
+for s in "${rendered_install_script}" "${rendered_skill_script}" "${rendered_notice_script}"; do
+    if [[ -s "${s}" ]]; then
+        bash -n "${s}"
+        if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck --severity=warning "${s}"
+        fi
+    fi
+done
 
 echo "==> Verify mise configuration renders"
 rendered_mise_config="${render_directory}/mise-config.toml"
