@@ -87,15 +87,35 @@ chezmoi execute-template --file --source="${repository_root}" \
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/run_onchange_after_link-agent-skills.sh.tmpl" \
     > "${rendered_skill_script}"
+rendered_notice_script="${render_directory}/zz-wsl-notice.sh"
+chezmoi execute-template --file --source="${repository_root}" \
+    "${repository_root}/run_after_zz-wsl-notice.sh.tmpl" \
+    > "${rendered_notice_script}"
 bash -n "${rendered_install_script}"
 bash -n "${rendered_skill_script}"
+bash -n "${rendered_notice_script}"
 if command -v shellcheck >/dev/null 2>&1; then
-    shellcheck --severity=warning "${rendered_install_script}" "${rendered_skill_script}"
+    shellcheck --severity=warning "${rendered_install_script}" "${rendered_skill_script}" "${rendered_notice_script}"
+fi
+
+echo "==> Verify mise configuration renders"
+rendered_mise_config="${render_directory}/mise-config.toml"
+chezmoi execute-template --file --source="${repository_root}" \
+    "${repository_root}/dot_config/mise/config.toml.tmpl" \
+    > "${rendered_mise_config}"
+if ! grep -q 'aqua:BurntSushi/ripgrep' "${rendered_mise_config}"; then
+    echo "dot_config/mise/config.toml.tmpl does not render aqua:BurntSushi/ripgrep" >&2
+    exit 1
+fi
+if ! grep -q 'npm:agy-crew' "${rendered_mise_config}"; then
+    echo "dot_config/mise/config.toml.tmpl does not render npm:agy-crew" >&2
+    exit 1
 fi
 
 for script_template in \
     run_onchange_after_install-packages.sh.tmpl \
-    run_onchange_after_link-agent-skills.sh.tmpl; do
+    run_onchange_after_link-agent-skills.sh.tmpl \
+    run_after_zz-wsl-notice.sh.tmpl; do
     windows_render="${render_directory}/$(basename "${script_template}").windows"
     chezmoi execute-template --file --source="${repository_root}" \
         --override-data "${windows_override}" \
@@ -374,6 +394,16 @@ if [ -z "${chezmoi_version}" ]; then
     exit 1
 fi
 
+bootstrap_chezmoi_version="$(sed -n "s/^DEFAULT_CHEZMOI_VERSION=['\"]\([^'\"]*\)['\"].*$/\1/p" bootstrap.sh)"
+if [ -z "${bootstrap_chezmoi_version}" ]; then
+    echo "Could not read DEFAULT_CHEZMOI_VERSION from bootstrap.sh" >&2
+    exit 1
+fi
+if [ "${bootstrap_chezmoi_version}" != "${chezmoi_version}" ]; then
+    echo "bootstrap.sh DEFAULT_CHEZMOI_VERSION (${bootstrap_chezmoi_version}) does not match .chezmoidata.toml (${chezmoi_version})" >&2
+    exit 1
+fi
+
 chezmoi_checksums_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_checksums.txt"
 chezmoi_glibc_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-glibc_amd64.tar.gz"
 chezmoi_musl_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-musl_amd64.tar.gz"
@@ -422,7 +452,6 @@ done
 
 tier1_urls=(
     "https://github.com/ajeetdsouza/zoxide/releases/download/v${zoxide_version}/zoxide-${zoxide_version}-x86_64-unknown-linux-musl.tar.gz"
-    "https://github.com/BurntSushi/ripgrep/releases/download/${ripgrep_version}/ripgrep-${ripgrep_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://github.com/sharkdp/fd/releases/download/v${fd_version}/fd-v${fd_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://github.com/dandavison/delta/releases/download/${git_delta_version}/delta-${git_delta_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://github.com/jdx/mise/releases/download/v${mise_version}/mise-v${mise_version}-linux-x64-musl.tar.gz"

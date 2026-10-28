@@ -34,6 +34,7 @@ jobs:
             'setup-ssh.ps1'
             'dot_config/powershell/agent-env.ps1'
             'dot_config/powershell/profile.ps1'
+            'dot_local/share/mydotfiles/configure-terminal-fonts.ps1'
           )
           foreach ($file in $files) {
             $errors = $null

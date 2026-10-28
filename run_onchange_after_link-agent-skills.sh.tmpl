@@ -25,5 +25,17 @@ fi
 if [ -x "${HOME}/.local/bin/mise" ]; then
     "${HOME}/.local/bin/mise" reshim || true
 fi
-agy-crew install --hosts omp || true
+
+if command -v agy-crew >/dev/null 2>&1; then
+    agy-crew install --hosts omp || true
+elif [ -x "${HOME}/.local/bin/mise" ]; then
+    "${HOME}/.local/bin/mise" exec -- agy-crew install --hosts omp || true
+else
+    npm_bin="$(npm root -g 2>/dev/null)/../bin"
+    if [ -x "${npm_bin}/agy-crew" ]; then
+        "${npm_bin}/agy-crew" install --hosts omp || true
+    else
+        echo "Warning: agy-crew command not found; skipping skill installation." >&2
+    fi
+fi
 {{ end -}}

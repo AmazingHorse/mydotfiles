@@ -1,0 +1,30 @@
+{{ if and (eq .chezmoi.os "linux") (or (contains "microsoft" (lower .chezmoi.kernel.osrelease)) (contains "wsl" (lower .chezmoi.kernel.osrelease))) -}}
+#!/usr/bin/env bash
+set -euo pipefail
+
+win_localappdata=""
+if command -v wslvar >/dev/null 2>&1; then
+    win_localappdata="$(wslpath "$(wslvar LOCALAPPDATA 2>/dev/null)" 2>/dev/null || true)"
+fi
+if [[ -z "${win_localappdata}" && -n "${LOCALAPPDATA:-}" ]]; then
+    win_localappdata="$(wslpath "${LOCALAPPDATA}" 2>/dev/null || true)"
+fi
+
+fonts_installed=false
+if [[ -n "${win_localappdata}" && -f "${win_localappdata}/Microsoft/Windows/Fonts/CaskaydiaCoveNerdFont-Regular.ttf" ]]; then
+    fonts_installed=true
+elif [[ -f "/mnt/c/Windows/Fonts/CaskaydiaCoveNerdFont-Regular.ttf" ]]; then
+    fonts_installed=true
+fi
+
+if [ "${fonts_installed}" = false ]; then
+    echo ""
+    echo "================================================================================"
+    echo "  [WSL Notice] Windows Host Font Setup Needed:"
+    echo "  CaskaydiaCove Nerd Font is not yet installed on the Windows host."
+    echo "  To install fonts and configure Windows Terminal / GUI editors,"
+    echo "  run 'chezmoi apply' from PowerShell on Windows."
+    echo "================================================================================"
+    echo ""
+fi
+{{ end -}}
