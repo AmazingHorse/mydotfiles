@@ -23,6 +23,12 @@ The main risk is **scaling**. Each new tool costs 4 edits in 2 languages, agent 
 ## P0: Fix these first
 
 ### 1. Each new tool costs 4 edits in 2 languages
+
+> **Status: In Progress (Pilot Completed)**
+> - [x] **Pilot:** Migrated `ripgrep` to `aqua:BurntSushi/ripgrep` in mise; removed custom installer scripts and URL reachability checks.
+> - [x] Added `npm:agy-crew` to mise and made skill linking robust via `mise exec`.
+> - [ ] Remaining tools to migrate: `fd`, `git_delta`, `zoxide`, `just`.
+
 To add one CLI today you have to touch:
 1. `.chezmoidata.toml` (pin)
 2. `run_onchange_after_install-packages.sh.tmpl` (600 lines of bash)
@@ -124,15 +130,17 @@ Add `gitleaks` to CI and to a pre-commit hook either way.
 - The URL reachability checks make PR CI flaky and slow. Move them to a **scheduled** workflow. Renovate covers most of it anyway.
 - Add a **matrix of real installs** in containers: `ubuntu:22.04`, `ubuntu:24.04`, `debian:12`, running full `chezmoi init --apply` with `profile=server`. Add a `windows-latest` job that runs the PS installer with a dry-run flag.
 - Run `PSScriptAnalyzer`, not only the parse check.
-- The ~150 lines of PowerShell embedded in a bash string inside a Go template (`ensure_wsl_windows_nerd_fonts`) never gets linted. Extract it to a real `.ps1` file that CI can parse.
+- [x] **Done:** The ~150 lines of PowerShell embedded in a bash string inside a Go template (`ensure_wsl_windows_nerd_fonts`) never gets linted. Extracted to `dot_local/share/mydotfiles/configure-terminal-fonts.ps1` and added to `.github/workflows/ci.yml` parser list.
 
 ---
 
 ## P2: Likely bugs and cleanup
 
-- **Likely bug: the WSL font setup probably fails silently on Windows Terminal.** It runs `powershell.exe` (5.1), where `ConvertFrom-Json` **rejects `//` comments**. WT's generated `settings.json` has comments, and the `catch {}` swallows the error. The same code also rewrites **every** `%APPDATA%\*\User\settings.json`. On pwsh 7 that would succeed and **strip comments** from your editor configs. Use `pwsh` if present, and limit it to the known editor list.
+- [x] **Done: WSL font setup on Windows Terminal:** Extracted PowerShell script to `dot_local/share/mydotfiles/configure-terminal-fonts.ps1`. Eliminated cross-boundary Windows invocation from WSL install script. Replaced synchronous `SendMessage` with non-blocking `SendMessageTimeout`. Added JSON comments protection (skips rewrite with warning). Added non-elevated user-space font check in `run_after_zz-wsl-notice.sh.tmpl`.
 - Move `run_*` scripts into `.chezmoiscripts/` to declutter the repo root (chezmoi convention).
-- `bootstrap.sh` keeps its own copy of `DEFAULT_CHEZMOI_VERSION` and `download_with_retries`. That's acceptable for a script that has to work before chezmoi exists, but add a CI assert that the two pins match.
+- [x] **Done:** `bootstrap.sh` pin assertion in `scripts/ci-check.sh` ensuring `DEFAULT_CHEZMOI_VERSION` matches `.chezmoidata.toml`.
+- [x] **Done:** Isolated `scripts/ci-check.sh` to a temporary directory config so local CI checks never clobber `$HOME/.config/chezmoi/chezmoi.toml` or `$HOME/.gitconfig`.
+- [x] **Done:** Added `git-filter-repo` to package manifests (Linux apt, Windows pip).
 - `dot_justfile`: `seed` and `agent-init` mostly duplicate each other. `devin-worktree` and `devin-clean` are dead stubs; delete them and add them back when you need them (they're in git history).
 - `plans/part2-*.md` and `plans/part3-*.md` are finished agent work orders. Delete them, or turn the reasoning into `docs/adr/NNNN-*.md`. "Why chezmoi", "why mise", and "why a bash permission shim" are good ADRs and good platform-engineer portfolio material.
 - Commit style is mixed (`feat(omp): …` vs `Added jq`). Pick Conventional Commits; agents follow the pattern once it's in AGENTS.md.
