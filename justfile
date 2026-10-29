@@ -17,6 +17,17 @@ default:
 check:
     bash ./scripts/ci-check.sh
 
+# Alias test to check
+test: check
+
+# Run CI check skipping network reachability
+test-fast:
+    CI_SKIP_NETWORK=1 bash ./scripts/ci-check.sh
+
+# Render agent core rules into agent/cursor-user-rules.md
+render-rules:
+    chezmoi execute-template --source={{justfile_directory()}} '{{ "{{" }} includeTemplate "agent-core.md" . {{ "}}" }}' > {{justfile_directory()}}/agent/cursor-user-rules.md
+
 # Apply managed dotfiles from this source.
 apply:
     chezmoi apply --source={{justfile_directory()}}

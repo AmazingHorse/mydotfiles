@@ -1,0 +1,26 @@
+name: Scheduled Reachability Check
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reachability:
+    name: Verify Release Assets Reachability
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install chezmoi
+        run: |
+          sudo apt-get update && sudo apt-get install -y curl
+          sh -c "$(curl -fsLS get.chezmoi.io)" -- -b /usr/local/bin
+
+      - name: Run asset reachability check
+        run: |
+          CI_SKIP_NETWORK=0 bash ./scripts/ci-check.sh

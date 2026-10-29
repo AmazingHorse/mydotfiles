@@ -85,14 +85,14 @@ echo "==> Verify Linux run-script renders"
 rendered_install_script="${render_directory}/install-packages.sh"
 rendered_skill_script="${render_directory}/link-agent-skills.sh"
 chezmoi execute-template --file --source="${repository_root}" \
-    "${repository_root}/run_onchange_after_install-packages.sh.tmpl" \
+    "${repository_root}/.chezmoiscripts/run_onchange_after_install-packages.sh.tmpl" \
     > "${rendered_install_script}"
 chezmoi execute-template --file --source="${repository_root}" \
-    "${repository_root}/run_onchange_after_link-agent-skills.sh.tmpl" \
+    "${repository_root}/.chezmoiscripts/run_onchange_after_link-agent-skills.sh.tmpl" \
     > "${rendered_skill_script}"
 rendered_notice_script="${render_directory}/zz-wsl-notice.sh"
 chezmoi execute-template --file --source="${repository_root}" \
-    "${repository_root}/run_after_zz-wsl-notice.sh.tmpl" \
+    "${repository_root}/.chezmoiscripts/run_after_zz-wsl-notice.sh.tmpl" \
     > "${rendered_notice_script}"
 for s in "${rendered_install_script}" "${rendered_skill_script}" "${rendered_notice_script}"; do
     if [[ -s "${s}" ]]; then
@@ -108,19 +108,45 @@ rendered_mise_config="${render_directory}/mise-config.toml"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/dot_config/mise/config.toml.tmpl" \
     > "${rendered_mise_config}"
-if ! grep -q 'aqua:BurntSushi/ripgrep' "${rendered_mise_config}"; then
-    echo "dot_config/mise/config.toml.tmpl does not render aqua:BurntSushi/ripgrep" >&2
+for mise_tool in \
+    'aqua:BurntSushi/ripgrep' \
+    'aqua:sharkdp/fd' \
+    'aqua:dandavison/delta' \
+    'aqua:ajeetdsouza/zoxide' \
+    'aqua:casey/just' \
+    'npm:agy-crew'; do
+    if ! grep -q "${mise_tool}" "${rendered_mise_config}"; then
+        echo "dot_config/mise/config.toml.tmpl does not render ${mise_tool}" >&2
+        exit 1
+    fi
+done
+
+echo "==> Verify machine profiles (server, workstation, ephemeral)"
+server_mise_config="${render_directory}/mise-config-server.toml"
+chezmoi execute-template --file --source="${repository_root}" \
+    --override-data '{"profile":"server"}' \
+    "${repository_root}/dot_config/mise/config.toml.tmpl" > "${server_mise_config}"
+if grep -q "npm:@oh-my-pi/pi-coding-agent" "${server_mise_config}"; then
+    echo "Server profile unexpectedly rendered omp!" >&2
     exit 1
 fi
-if ! grep -q 'npm:agy-crew' "${rendered_mise_config}"; then
-    echo "dot_config/mise/config.toml.tmpl does not render npm:agy-crew" >&2
+if grep -q "npm:agy-crew" "${server_mise_config}"; then
+    echo "Server profile unexpectedly rendered agy-crew!" >&2
+    exit 1
+fi
+if ! grep -q "aqua:BurntSushi/ripgrep" "${server_mise_config}"; then
+    echo "Server profile missing core tool ripgrep!" >&2
     exit 1
 fi
 
+rendered_secrets="${render_directory}/agent-secrets.env"
+chezmoi execute-template --file --source="${repository_root}" \
+    "${repository_root}/dot_config/private_agent-secrets.env.tmpl" > "${rendered_secrets}"
+
 for script_template in \
-    run_onchange_after_install-packages.sh.tmpl \
-    run_onchange_after_link-agent-skills.sh.tmpl \
-    run_after_zz-wsl-notice.sh.tmpl; do
+    .chezmoiscripts/run_onchange_after_install-packages.sh.tmpl \
+    .chezmoiscripts/run_onchange_after_link-agent-skills.sh.tmpl \
+    .chezmoiscripts/run_after_zz-wsl-notice.sh.tmpl; do
     windows_render="${render_directory}/$(basename "${script_template}").windows"
     chezmoi execute-template --file --source="${repository_root}" \
         --override-data "${windows_override}" \
@@ -134,6 +160,52 @@ done
 echo "==> Verify agent configuration files"
 python3 -m json.tool dot_omp/private_agent/mcp.json >/dev/null
 python3 -m json.tool dot_omp/private_agent/permissions.defaults.json >/dev/null
+echo "==> Verify secrets scanning"
+if command -v betterleaks >/dev/null 2>&1; then
+    betterleaks fs --redact .
+elif command -v gitleaks >/dev/null 2>&1; then
+    gitleaks detect --no-git --redact
+else
+    echo "Secrets scanner (betterleaks/gitleaks) not installed locally; skipping local scan."
+fi
+echo "==> Verify agent rules single-sourcing and rendering"
+for agent_tmpl in \
+    dot_gemini/GEMINI.md.tmpl \
+    dot_omp/private_agent/AGENTS.md.tmpl \
+    dot_claude/CLAUDE.md.tmpl \
+    dot_codex/AGENTS.md.tmpl; do
+    rendered_agent="${render_directory}/$(basename "${agent_tmpl}" .tmpl)"
+    chezmoi execute-template --file --source="${repository_root}" \
+        "${repository_root}/${agent_tmpl}" > "${rendered_agent}"
+    if ! grep -q "Platform / shell awareness" "${rendered_agent}"; then
+        echo "Failed to render core rules in ${agent_tmpl}" >&2
+        exit 1
+    fi
+done
+
+expected_cursor_rules="${render_directory}/cursor-user-rules.md"
+chezmoi execute-template --source="${repository_root}" \
+    '{{ includeTemplate "agent-core.md" . }}' > "${expected_cursor_rules}"
+if ! diff -u "${repository_root}/agent/cursor-user-rules.md" "${expected_cursor_rules}" >/dev/null; then
+    echo "agent/cursor-user-rules.md is out of date with agent-core.md; run 'just render-rules'" >&2
+    exit 1
+fi
+echo "==> Verify Renovate configuration"
+python3 -m json.tool .github/renovate.json >/dev/null
+if command -v bun >/dev/null 2>&1; then
+    bun -e '
+        const fs = require("fs");
+        const conf = JSON.parse(fs.readFileSync(".github/renovate.json", "utf8"));
+        const data = fs.readFileSync(".chezmoidata.toml", "utf8");
+        const matchStr = conf.customManagers[0].matchStrings[0];
+        const regex = new RegExp(matchStr, "g");
+        const matches = [...data.matchAll(regex)];
+        if (matches.length < 5) {
+            console.error(`Expected at least 5 Renovate pin matches, got ${matches.length}`);
+            process.exit(1);
+        }
+    '
+fi
 if command -v bun >/dev/null 2>&1; then
     bun test scripts/omp-permissions.test.ts
 fi
@@ -153,7 +225,7 @@ chezmoi apply \
 echo "==> Verify SSH config migration"
 rendered_migration_script="${destination_directory}/migrate-ssh-config.sh"
 chezmoi execute-template \
-    < run_once_before_migrate-ssh-config.sh.tmpl \
+    < .chezmoiscripts/run_once_before_migrate-ssh-config.sh.tmpl \
     > "${rendered_migration_script}"
 bash -n "${rendered_migration_script}"
 if command -v shellcheck >/dev/null 2>&1; then
@@ -212,11 +284,11 @@ rendered_wsl_interop="${wsl_interop_directory}/configure-wsl-interop.sh"
 rendered_native_wsl_interop="${wsl_interop_directory}/configure-wsl-interop.native.sh"
 chezmoi execute-template --file --source="${repository_root}" \
     --override-data "${wsl_template_override}" \
-    "${repository_root}/run_onchange_after_configure-wsl-interop.sh.tmpl" \
+    "${repository_root}/.chezmoiscripts/run_onchange_after_configure-wsl-interop.sh.tmpl" \
     > "${rendered_wsl_interop}"
 chezmoi execute-template --file --source="${repository_root}" \
     --override-data "${native_linux_template_override}" \
-    "${repository_root}/run_onchange_after_configure-wsl-interop.sh.tmpl" \
+    "${repository_root}/.chezmoiscripts/run_onchange_after_configure-wsl-interop.sh.tmpl" \
     > "${rendered_native_wsl_interop}"
 if [ -n "$(tr -d '[:space:]' < "${rendered_native_wsl_interop}")" ]; then
     echo "WSL interop script should render empty on native Linux." >&2
@@ -371,7 +443,7 @@ printf 'q\n' | env -i \
     TERM="xterm-256color" \
     git -C "${git_check_dir}/repo" add -p >/dev/null
 
-echo "==> Verify pinned Oh My Posh release asset"
+echo "==> Verify pinned versions in data and bootstrap"
 oh_my_posh_version="$(
     awk -F'"' '/^oh_my_posh[[:space:]]*=/ { print $2; exit }' .chezmoidata.toml
 )"
@@ -380,17 +452,6 @@ if [ -z "${oh_my_posh_version}" ]; then
     exit 1
 fi
 
-asset_url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v${oh_my_posh_version}/posh-linux-amd64"
-http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${asset_url}")"
-case "${http_status}" in
-    200|302) ;;
-    *)
-        echo "Pinned Oh My Posh asset not reachable (${http_status}): ${asset_url}" >&2
-        exit 1
-        ;;
-esac
-
-echo "==> Verify pinned chezmoi release asset"
 chezmoi_version="$(
     awk -F'"' '/^chezmoi[[:space:]]*=/ { print $2; exit }' .chezmoidata.toml
 )"
@@ -409,21 +470,6 @@ if [ "${bootstrap_chezmoi_version}" != "${chezmoi_version}" ]; then
     exit 1
 fi
 
-chezmoi_checksums_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_checksums.txt"
-chezmoi_glibc_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-glibc_amd64.tar.gz"
-chezmoi_musl_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-musl_amd64.tar.gz"
-for url in "${chezmoi_checksums_url}" "${chezmoi_glibc_url}" "${chezmoi_musl_url}"; do
-    http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
-    case "${http_status}" in
-        200|302) ;;
-        *)
-            echo "Pinned chezmoi asset not reachable (${http_status}): ${url}" >&2
-            exit 1
-            ;;
-    esac
-done
-
-echo "==> Verify pinned Tier-1 CLI release assets"
 read_pin() {
     local pin_name="$1"
     awk -F'"' -v pin_name="${pin_name}" \
@@ -455,12 +501,41 @@ for required_pin in \
     fi
 done
 
+if [ "${CI_SKIP_NETWORK:-0}" = "1" ] || [ "${1:-}" = "--skip-network" ]; then
+    echo "==> Skipping network reachability checks (--skip-network or CI_SKIP_NETWORK=1 set)"
+    echo "==> CI checks passed"
+    exit 0
+fi
+
+echo "==> Verify pinned Oh My Posh release asset"
+asset_url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v${oh_my_posh_version}/posh-linux-amd64"
+http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${asset_url}")"
+case "${http_status}" in
+    200|302) ;;
+    *)
+        echo "Pinned Oh My Posh asset not reachable (${http_status}): ${asset_url}" >&2
+        exit 1
+        ;;
+esac
+
+echo "==> Verify pinned chezmoi release assets"
+chezmoi_checksums_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_checksums.txt"
+chezmoi_glibc_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-glibc_amd64.tar.gz"
+chezmoi_musl_url="https://github.com/twpayne/chezmoi/releases/download/v${chezmoi_version}/chezmoi_${chezmoi_version}_linux-musl_amd64.tar.gz"
+for url in "${chezmoi_checksums_url}" "${chezmoi_glibc_url}" "${chezmoi_musl_url}"; do
+    http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
+    case "${http_status}" in
+        200|302) ;;
+        *)
+            echo "Pinned chezmoi asset not reachable (${http_status}): ${url}" >&2
+            exit 1
+            ;;
+    esac
+done
+
+echo "==> Verify pinned Tier-1 CLI release assets"
 tier1_urls=(
-    "https://github.com/ajeetdsouza/zoxide/releases/download/v${zoxide_version}/zoxide-${zoxide_version}-x86_64-unknown-linux-musl.tar.gz"
-    "https://github.com/sharkdp/fd/releases/download/v${fd_version}/fd-v${fd_version}-x86_64-unknown-linux-musl.tar.gz"
-    "https://github.com/dandavison/delta/releases/download/${git_delta_version}/delta-${git_delta_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://github.com/jdx/mise/releases/download/v${mise_version}/mise-v${mise_version}-linux-x64-musl.tar.gz"
-    "https://github.com/casey/just/releases/download/${just_version}/just-${just_version}-x86_64-unknown-linux-musl.tar.gz"
     "https://registry.npmjs.org/agy-crew/-/agy-crew-${agy_crew_version}.tgz"
     "https://github.com/ryanoasis/nerd-fonts/releases/download/v${nerd_fonts_version}/CascadiaCode.zip"
 )
