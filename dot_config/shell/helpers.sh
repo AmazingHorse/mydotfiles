@@ -1,10 +1,6 @@
 # Shared interactive shell helpers. Soft-sourced from zshrc/bashrc.
 # shellcheck shell=sh disable=SC3043
 
-case ":$PATH:" in
-    *":$HOME/.local/bin:"*) ;;
-    *) PATH="$HOME/.local/bin:$PATH"; export PATH ;;
-esac
 
 if command -v preferred-editor >/dev/null 2>&1; then
     export EDITOR="preferred-editor"

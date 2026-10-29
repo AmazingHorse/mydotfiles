@@ -18,6 +18,8 @@ bash -n dot_config/shell/helpers.sh
 bash -n dot_config/shell/wsl-windows-path.sh
 sh -n dot_config/shell/wsl-windows-path.sh
 sh -n dot_config/shell/helpers.sh
+sh -n dot_config/shell/path.sh
+bash -n dot_config/shell/path.sh
 if command -v zsh >/dev/null 2>&1; then
     zsh -n dot_zshrc
 fi
@@ -30,10 +32,33 @@ if command -v shellcheck >/dev/null 2>&1; then
         setup-ssh.sh \
         dot_local/bin/executable_preferred-editor \
         dot_config/shell/helpers.sh \
-        dot_config/shell/wsl-windows-path.sh
+        dot_config/shell/wsl-windows-path.sh \
+        dot_config/shell/path.sh
 else
     echo "shellcheck not installed; skipping"
 fi
+echo "==> Verify path.sh precedence and idempotency"
+test_path_dir="$(mktemp -d)"
+mkdir -p "${test_path_dir}/.local/bin" "${test_path_dir}/.local/share/mise/shims" "${test_path_dir}/bin"
+computed_path="$(env -i HOME="${test_path_dir}" PATH="/usr/bin:/bin" sh -c '. dot_config/shell/path.sh; echo "$PATH"')"
+expected_path="${test_path_dir}/.local/bin:${test_path_dir}/.local/share/mise/shims:${test_path_dir}/bin:/usr/bin:/bin"
+if [ "${computed_path}" != "${expected_path}" ]; then
+    echo "path.sh output mismatch:" >&2
+    echo "  Expected: ${expected_path}" >&2
+    echo "  Actual:   ${computed_path}" >&2
+    rm -rf "${test_path_dir}"
+    exit 1
+fi
+idempotent_path="$(env -i HOME="${test_path_dir}" PATH="${computed_path}" sh -c '. dot_config/shell/path.sh; echo "$PATH"')"
+if [ "${idempotent_path}" != "${expected_path}" ]; then
+    echo "path.sh is not idempotent:" >&2
+    echo "  Expected: ${expected_path}" >&2
+    echo "  Actual:   ${idempotent_path}" >&2
+    rm -rf "${test_path_dir}"
+    exit 1
+fi
+rm -rf "${test_path_dir}"
+
 
 echo "==> Chezmoi dry-run (exclude scripts)"
 destination_directory="$(mktemp -d)"
