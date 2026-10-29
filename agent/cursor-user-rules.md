@@ -1,43 +1,40 @@
 # Agent defaults
 
-Cross-project habits for Cursor agents. Repo-specific guidance stays in each project’s `.cursor/rules`.
+Cross-project habits across AI coding agents. Repo-specific guidance stays in each project's documentation and `.agent-spec.md` / rules.
 
 ## Platform / shell awareness
 
-Match the environment on the **first** Shell call. Prefer tooling that works on Windows and Unix.
+Match the environment on the **first** shell call. Prefer tooling that works across Windows and Unix.
 
-- Read `user_info` / env: `OS Version`, `Shell`.
-- **win32 / PowerShell:** use PowerShell first. Do **not** bash-probe (`command -v`, `which`, `2>/dev/null`, heredocs) then fall back.
-- **Unix:** use bash/zsh normally.
-
-Prefer: `Get-Command` / `Test-Path` / `Get-Content`; `npm`/`pnpm`/`yarn`; `just` → node; Node `scripts/*`.  
-Avoid on Windows: bash-only `&&` / `<<EOF` unless the session is bash.  
-Paths: repo-relative; never hardcode `/home/...` or `C:\Users\...` in committed scripts. New shared automation = **Node** or **just → npm/node**.
+- Check environment/OS on launch.
+- **Windows / PowerShell:** Use PowerShell first. Do **not** bash-probe (`command -v`, `which`, `2>/dev/null`, heredocs) then fall back.
+- **Unix / Linux / macOS:** Use bash/zsh normally.
+- Automation / task runner: Prefer `just` or shell scripts native to the platform. Repo-relative paths only; never hardcode `/home/...` or `C:\Users\...` in committed scripts.
 
 ## Agency
 
-- Follow the user; keep going until the query is resolved. Don't yield early.
-- State assumptions and continue; ask only when blocked.
-- Prefer tools over questions when the answer is discoverable.
-- After substantive edits: run tests/build and fix failures before closing.
+- Follow through until the query or objective is resolved. Avoid stopping prematurely.
+- State assumptions and continue; ask only when blocked or facing genuine architectural ambiguity.
+- Prefer tools over questions when answers are discoverable in the repository.
+- After substantive edits: run tests/checks and verify fixes before declaring done.
 
 ## Communication
 
-- Skimmable Markdown: `##` / `###` only (no `#`). Bold sparingly for the actual answer.
-- Backticks for files, dirs, symbols. Call code changes **edits**, not patches.
-- No narration comments in code. No “let me know if that’s okay” unless blocked.
-- Brief progress notes before tool batches; end with a short high-signal summary (no “Summary:” / “Update:” headings). Don't restate the plan.
+- Terse, skimmable Markdown: `##` / `###` headings only. Bold sparingly.
+- Backticks for files, directories, symbols, and commands. Call code modifications **edits**, not patches.
+- No narration comments in code. No "let me know if that's okay" unless blocked.
+- Brief progress notes before tool batches; end with a short high-signal summary. Don't restate obvious plans.
 
 ## Exploration
 
-- Prefer **Grep** (several parallel patterns) then read likely files; don't drip one search at a time.
+- Prefer targeted searches with parallel patterns, then read likely file ranges; don't drip one search at a time.
 - Parallelize independent reads/greps; sequence only when output gates the next input.
-- Bias to gather more evidence before declaring done.
+- Gather concrete evidence before declaring done.
 
-## Code style (when writing code)
+## Code style & Git
 
-- High-clarity names (verbs for functions, nouns for values); no 1–2 char names.
+- High-clarity names (verbs for functions, nouns for values); avoid cryptic 1–2 char abbreviations.
 - Guard clauses / early returns; handle errors first; avoid deep nesting.
-- Comment **why**, not how; no inline trailing comments; no TODO—implement.
-- Match existing style; don't reformat unrelated code.
-- Typed public APIs when the language expects it; avoid `any` / pointless casts.
+- Comment **why**, not how; no inline trailing comments; no TODOs—implement or escalate.
+- Match existing repository style; do not reformat unrelated code.
+- Commit messages follow Conventional Commits (`feat(scope): ...`, `fix(scope): ...`).

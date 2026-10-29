@@ -20,6 +20,16 @@ const AGENT_SCRATCH_ROOT = path.join(os.homedir(), ".omp", "scratch");
  * bash). Remove when omp supports this natively or sessions run in a sandboxed
  * worktree; then restore bash.patterns in omp-managed-config.yml.
  * ---------------------------------------------------------------------------
+ * ---------------------------------------------------------------------------
+ * SECURITY TRADE / THREAT MODEL:
+ * Commands auto-allowed in permissions.defaults.json (e.g. `just`, `npm test`,
+ * `cargo test`, `pytest`) can execute arbitrary code defined in the repository
+ * (build scripts, test runners, template execution). This is accepted for trusted
+ * workspaces. For untrusted, freshly cloned code, sessions should run inside
+ * an isolated devcontainer or sandbox (e.g. omp-sandbox / bwrap).
+ * Destructive branch alterations (`git branch -D`, `-d`, `-m`, etc.) are
+ * explicitly gated in the `ask` list to prevent branch deletion.
+ * ---------------------------------------------------------------------------
  * Rule files are JSON shaped { "allow"?: [], "ask"?: [], "deny"?: [] } where
  * each entry is a command prefix ("git status", "npm run"). Levels, highest to
  * lowest precedence:

@@ -1,3 +1,5 @@
+{{ includeTemplate "agent-core.md" . }}
+
 # Global execution contract (omp)
 
 Applies to every project. A project `.agent-profile.md` (drop-in archetype) and
@@ -6,12 +8,11 @@ loosen it.
 
 ## 1. Strict LSP priority
 
-- Never use `grep`, `find`, `cat`, or `sed` to trace types, usages, or symbols.
-- Use native LSP first: the `lsp` tool actions `definition`, `references`,
-  `rename`, `symbols` (exposed as `lsp_definition`, `lsp_references`,
+- Prefer native LSP where a language server exists: use the `lsp` tool actions `definition`,
+  `references`, `rename`, `symbols` (exposed as `lsp_definition`, `lsp_references`,
   `lsp_rename` in some hosts), plus hover/diagnostics when available.
-- Text search is for strings, config keys, and comments only, and only after LSP
-  has no answer.
+- Text search (`grep`, `find`) is for strings, config keys, comments, or when no LSP
+  server exists for the target language/file type.
 - On files over 150 lines, read only targeted line ranges. Never dump a whole
   large file into context.
 
@@ -42,12 +43,15 @@ loosen it.
 
 ## 5. Scope discipline
 
-- Touch only the files explicitly listed in `.agent-spec.md`.
-- If the change needs another file, stop and report the file and the reason.
+- When `.agent-spec.md` exists, touch only the files explicitly listed in it.
+  If the change needs another file, stop and report the file and the reason.
   Do not widen scope silently.
-- No drive-by refactors, renames, or formatting churn outside the listed files.
+- When working without `.agent-spec.md`, touch only files directly required for
+  the objective.
+- No drive-by refactors, renames, or formatting churn outside the targeted files.
 
 ## 6. Done means verified
 
 - Run the verification command from `.agent-spec.md` (or the project profile)
-  before reporting done. Report the exact command and its result.
+  before reporting done. If neither specifies one, run the project's standard
+  test/verification command. Report the exact command and its result.

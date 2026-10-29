@@ -123,6 +123,16 @@ describe("decideSegment with defaults", () => {
 		expect(decide("bash -n script.sh")).toEqual({ kind: "allow" });
 	});
 
+	test("git branch allowed for inspection but gated for deletion", () => {
+		expect(decide("git branch")).toEqual({ kind: "allow" });
+		expect(decide("git branch -a")).toEqual({ kind: "allow" });
+		expect(decide("git branch --list")).toEqual({ kind: "allow" });
+		expect(decide("git branch -D feature")).toEqual({ kind: "ask", rule: "git branch -D", persistable: true });
+		expect(decide("git branch -d feature")).toEqual({ kind: "ask", rule: "git branch -d", persistable: true });
+		expect(decide("git branch --delete feature")).toEqual({ kind: "ask", rule: "git branch --delete", persistable: true });
+		expect(decide("git branch -m old new")).toEqual({ kind: "ask", rule: "git branch -m", persistable: true });
+	});
+
 	test("ask rules are persistable", () => {
 		expect(decide("git push")).toEqual({ kind: "ask", rule: "git push", persistable: true });
 		expect(decide("rm -rf build")).toEqual({ kind: "ask", rule: "rm", persistable: true });
