@@ -8,6 +8,11 @@ bootstrap.sh
 setup-ssh.ps1
 setup-ssh.sh
 justfile
+AGENTS.md
+CLAUDE.md
+CONTRIBUTING.md
+docs/
+.pre-commit-config.yaml
 bin/
 .github/
 .cursor/
@@ -25,4 +30,12 @@ Thumbs.db
 .local/bin/preferred-editor
 .justfile
 .config/agent-env.sh
+{{- end }}
+{{- if eq .profile "server" }}
+.gemini/
+.claude/
+.codex/
+.omp/
+.config/agent-secrets.env
+.local/share/mydotfiles/configure-terminal-fonts.ps1
 {{- end }}

@@ -20,3 +20,15 @@ if [ -d /opt/rocm ]; then
 fi
 {{ end -}}
 {{ end }}
+
+# Load managed secrets if present
+if [ -r "$HOME/.config/agent-secrets.env" ]; then
+    # shellcheck source=/dev/null
+    . "$HOME/.config/agent-secrets.env"
+fi
+
+# Load unmanaged local overrides if present
+if [ -r "$HOME/.config/agent-env.local.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$HOME/.config/agent-env.local.sh"
+fi

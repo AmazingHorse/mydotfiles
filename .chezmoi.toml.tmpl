@@ -1,7 +1,36 @@
-{{- $gitName := promptStringOnce . "gitName" "Git name" -}}
-{{- $gitEmail := promptStringOnce . "gitEmail" "Git email" -}}
+{{- $isEphemeral := or (env "CODESPACES") (env "REMOTE_CONTAINERS") -}}
+{{- $gitName := "" -}}
+{{- $gitEmail := "" -}}
+{{- $profile := "workstation" -}}
+{{- if $isEphemeral -}}
+{{-   $profile = "ephemeral" -}}
+{{-   $gitName = "DevContainer Agent" -}}
+{{-   $gitEmail = "agent@devcontainer.local" -}}
+{{- else -}}
+{{-   $profile = promptChoiceOnce . "profile" "Machine profile" (list "workstation" "server" "ephemeral") -}}
+{{-   $gitName = promptStringOnce . "gitName" "Git name" -}}
+{{-   $gitEmail = promptStringOnce . "gitEmail" "Git email" -}}
+{{- end -}}
+{{- $toolsetInfra := false -}}
+{{- $toolsetContainers := false -}}
+{{- $toolsetRust := false -}}
+{{- if and (eq $profile "workstation") (not $isEphemeral) -}}
+{{-   $toolsetInfra = promptBoolOnce . "toolset_infra" "Infra tools (tofu/ansible/kubectl)" false -}}
+{{-   $toolsetContainers = promptBoolOnce . "toolset_containers" "Container tools (podman/docker/hadolint)" false -}}
+{{-   $toolsetRust = promptBoolOnce . "toolset_rust" "Rust toolchain" false -}}
+{{- end -}}
+
 umask = 0o022
 
 [data]
 gitName = {{ $gitName | quote }}
 gitEmail = {{ $gitEmail | quote }}
+profile = {{ $profile | quote }}
+toolset_infra = {{ $toolsetInfra }}
+toolset_containers = {{ $toolsetContainers }}
+toolset_rust = {{ $toolsetRust }}
+
+[data.toolsets]
+infra = {{ $toolsetInfra }}
+containers = {{ $toolsetContainers }}
+rust = {{ $toolsetRust }}
