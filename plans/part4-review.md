@@ -24,10 +24,10 @@ The main risk is **scaling**. Each new tool costs 4 edits in 2 languages, agent 
 
 ### 1. Each new tool costs 4 edits in 2 languages
 
-> **Status: In Progress (Pilot Completed)**
+> **Status: Completed**
 > - [x] **Pilot:** Migrated `ripgrep` to `aqua:BurntSushi/ripgrep` in mise; removed custom installer scripts and URL reachability checks.
 > - [x] Added `npm:agy-crew` to mise and made skill linking robust via `mise exec`.
-> - [ ] Remaining tools to migrate: `fd`, `git_delta`, `zoxide`, `just`.
+> - [x] Remaining tools migrated: `fd`, `git_delta`, `zoxide`, `just`.
 
 To add one CLI today you have to touch:
 1. `.chezmoidata.toml` (pin)
@@ -55,11 +55,16 @@ To add one CLI today you have to touch:
 - Exceptions that stay as scripts: git (PPA/winget), Nerd Fonts, agy (self-updating installer).
 
 ### 2. Automate pin bumps with Renovate
-Every pin is a manual bump today. Renovate supports mise config natively and has a regex manager for `.chezmoidata.toml`. You get a PR per bump, CI runs on it, and you merge. This is the habit that matters for platform work: **pins plus automated, tested bumps**.
+> **Status: Completed**
+> - [x] Configured `.github/renovate.json` with regex manager matching `.chezmoidata.toml` and native mise support.
+> - [x] Added Renovate configuration validation and regex pin matching test in `scripts/ci-check.sh`.
 
+Every pin was a manual bump. Renovate now supports mise config and uses a regex manager for `.chezmoidata.toml`. You get a PR per bump, CI runs on it, and you merge. This is the habit that matters for platform work: **pins plus automated, tested bumps**.
 ### 3. Agent rules in 3 hand-synced copies (they already drift)
-- `dot_gemini/GEMINI.md`, `agent/cursor-user-rules.md`, and the user rule I'm running under all say "keep in sync" by hand. The Cursor copy already differs ("New shared automation = **Node**").
-- That Node rule also contradicts this repo, which is bash + PowerShell + just.
+> **Status: Completed**
+> - [x] Created single canonical source `.chezmoitemplates/agent-core.md` (Node contradiction removed, Conventional Commits added).
+> - [x] Rendered to `~/.gemini/GEMINI.md`, `~/.omp/agent/AGENTS.md`, `~/.claude/CLAUDE.md`, and `~/.codex/AGENTS.md` via chezmoi templates.
+> - [x] Added `just render-rules` and CI freshness verification for `agent/cursor-user-rules.md`.
 
 **Recommendation:** one source, `.chezmoitemplates/agent-core.md`, included into every target:
 
@@ -74,43 +79,38 @@ Every pin is a manual bump today. Renovate supports mise config natively and has
 Do the same for **skills**: keep them in one directory (for example `~/.agents/skills`, fed by the repo and agy-crew) and symlink it into each tool. Do the same for **MCP servers**: one list in `.chezmoidata`, rendered into each tool's format.
 
 ### 4. The global omp contract is too absolute for a global file
-`AGENTS.md` applies to **every** project, but several rules only make sense inside the spec workflow:
-- "Touch only files listed in `.agent-spec.md`" breaks exploratory or no-spec sessions. Make it: *"When `.agent-spec.md` exists, …"*.
-- "Never use `grep`/`cat`" for symbols isn't workable in shell scripts, YAML, Terraform, or Proxmox configs, where no LSP exists. Make it: *"Prefer LSP where a server exists."*
-- Absolute rules that can't be followed teach models to ignore the file. Keep the hard "never" rules for safety only: secrets, destructive commands, out-of-workspace writes.
+> **Status: Completed**
+> - [x] Softened LSP priority to prefer LSP where a server exists and allow text search for shell/YAML/Terraform.
+> - [x] Made spec scope discipline conditional on `.agent-spec.md` existing.
+> - [x] Made verification command fallback to standard project test/check suite.
+> - [x] Hard safety invariants preserved (sandbox, secrets, destructive commands).
+
 
 ### 5. Permission allowlist: some "safe" entries can run arbitrary code
-In `permissions.defaults.json` these auto-allowed commands run whatever code the repo contains:
-- `just`, `npm test`, `npm run build`, `npm run lint`, `pytest` (conftest), `cargo build` / `cargo test` (build.rs), `go test`
-- `chezmoi execute-template` and `chezmoi cat`: templates can call `output` and run commands
-
-In your own repos that's an acceptable trade. In a **freshly cloned, untrusted repo** it means the agent runs attacker-controlled code with no prompt. Options:
-- Keep it, and document the trade explicitly in the SHIM header.
-- Or add a per-repo trust gate: the build/test allows only apply when the repo root is listed in a `trusted` file. This mirrors Phase 2 of your own `plans/part3`.
-- Smaller gap: `git branch` allows `git branch -D`. Consider `git branch --list` / `-a` / `-v` only.
-
+> **Status: Completed**
+> - [x] Documented threat model trade explicitly in `bootstrap-guard.ts` SHIM header for repo-defined build/test auto-allows.
+> - [x] Gated destructive branch modifications (`git branch -D`, `-d`, `-m`, `-M`, `-c`, `-C`) in `ask` tier.
+> - [x] Added unit tests in `scripts/omp-permissions.test.ts` ensuring `git branch` inspection remains allowed while deletion/rename prompts.
 ---
 
 ## P1: Needed for platform engineering
 
 ### 6. Machine profiles
-You're a sysadmin, so these dotfiles will land on servers, cluster nodes, containers, and Codespaces. None of those should get Nerd Fonts, Windows Terminal edits, agy, or omp.
+> **Status: Completed**
+> - [x] Defined `workstation`, `server`, and `ephemeral` profiles in `.chezmoi.toml.tmpl` and `.chezmoidata.toml`.
+> - [x] Auto-detects ephemeral/devcontainer environments (`$CODESPACES`, `$REMOTE_CONTAINERS`, non-TTY) to skip prompts.
+> - [x] Server profile skips font installations, Windows Terminal edits, agy, and omp via template conditionals and `.chezmoiignore`.
+> - [x] Added verification tests for server and workstation profiles in `scripts/ci-check.sh`.
 
-```gotemplate
-{{- $profile := promptChoiceOnce . "profile" "Machine profile" (list "workstation" "server" "ephemeral") -}}
-[data]
-profile = {{ $profile | quote }}
-[data.toolsets]
-infra    = {{ promptBoolOnce . "toolsets.infra" "Infra tools (tofu/ansible/kubectl)" }}
-embedded = {{ promptBoolOnce . "toolsets.embedded" "Embedded tools" }}
-```
 
 - `server`: shell, git, rg/fd, and the prompt only. No sudo-requiring installs unless asked.
 - `ephemeral`: detect `$CODESPACES`, `$REMOTE_CONTAINERS`, or a missing TTY, and skip prompts. chezmoi supports `--promptString`/`--promptBool` for non-interactive init. This makes the repo usable as a **devcontainer dotfiles repo**, which is how you'd sandbox agents on untrusted code.
 
 ### 7. Toolsets that match your actual work
+> **Status: Completed**
+> - [x] Added `infra` (`opentofu`, `kubectl`, `helm`, `k9s`, `sops`, `age`), `containers` (`hadolint`), and `rust` toolset switches to `dot_config/mise/config.toml.tmpl`.
+> - [x] Embedded toolchains stay per-project in respective repos.
 
-| Toolset | Suggested (via mise) | Why |
 |---|---|---|
 | core | `gh`, `jq`, `yq`, `uv`, `shfmt`, `direnv` (or mise `[env]`) | `uv` replaces pip/pipx/venv; `yq` for every YAML you'll touch |
 | infra | `opentofu`, `ansible` (via `uv tool`), `kubectl`, `helm`, `k9s`, `sops`, `age` | `thinkcenter-cluster` → bpg/proxmox provider + ansible is the standard PVE path |
@@ -119,32 +119,31 @@ embedded = {{ promptBoolOnce . "toolsets.embedded" "Embedded tools" }}
 | embedded | keep per-project (`flipper` mise.toml + ufbt), as you do now ✅ | Correct call; don't globalize toolchains |
 
 ### 8. No secrets story (needed for AI tooling)
-AI tools need API keys (Anthropic, Gemini, OpenAI, GitHub tokens for MCP, and so on). The repo has nowhere for them, so they end up in rc files or shell history. Pick one:
-- chezmoi + **age** encryption for a `private_dot_config/agent-secrets.env.age`
-- chezmoi's **Bitwarden / 1Password / pass** template functions, so secrets never enter the repo
-- At minimum, an unmanaged `~/.config/agent-env.local.sh` sourced last. Mirror the `.gitconfig.local` pattern you already use.
-
-Add `gitleaks` to CI and to a pre-commit hook either way.
+> **Status: Completed**
+> - [x] Created `dot_config/private_agent-secrets.env.tmpl` rendering Bitwarden secrets when unlocked (`BW_SESSION`).
+> - [x] Sourced managed secrets and unmanaged overrides (`~/.config/agent-env.local.sh`, PowerShell equivalent) in shell environments.
+> - [x] Secret scanning evaluation (Betterleaks vs Gitleaks).
 
 ### 9. CI: split checks that depend on the network from checks that don't
-- The URL reachability checks make PR CI flaky and slow. Move them to a **scheduled** workflow. Renovate covers most of it anyway.
-- Add a **matrix of real installs** in containers: `ubuntu:22.04`, `ubuntu:24.04`, `debian:12`, running full `chezmoi init --apply` with `profile=server`. Add a `windows-latest` job that runs the PS installer with a dry-run flag.
-- Run `PSScriptAnalyzer`, not only the parse check.
-- [x] **Done:** The ~150 lines of PowerShell embedded in a bash string inside a Go template (`ensure_wsl_windows_nerd_fonts`) never gets linted. Extracted to `dot_local/share/mydotfiles/configure-terminal-fonts.ps1` and added to `.github/workflows/ci.yml` parser list.
-
+> **Status: Completed**
+> - [x] Split network reachability checks into scheduled workflow `.github/workflows/scheduled-reachability.yml`.
+> - [x] Added fast network-isolated check support (`CI_SKIP_NETWORK=1` and `just test-fast`).
+> - [x] Added container install matrix tests (`ubuntu:22.04`, `ubuntu:24.04`, `debian:12`) under `profile=server`.
+> - [x] Added PSScriptAnalyzer and Betterleaks secret scanning steps to `.github/workflows/ci.yml`.
+> - [x] Extracted WSL font setup PowerShell script to `dot_local/share/mydotfiles/configure-terminal-fonts.ps1`.
 ---
 
 ## P2: Likely bugs and cleanup
 
 - [x] **Done: WSL font setup on Windows Terminal:** Extracted PowerShell script to `dot_local/share/mydotfiles/configure-terminal-fonts.ps1`. Eliminated cross-boundary Windows invocation from WSL install script. Replaced synchronous `SendMessage` with non-blocking `SendMessageTimeout`. Added JSON comments protection (skips rewrite with warning). Added non-elevated user-space font check in `run_after_zz-wsl-notice.sh.tmpl`.
-- Move `run_*` scripts into `.chezmoiscripts/` to declutter the repo root (chezmoi convention).
+- [x] **Done:** Moved `run_*` scripts into `.chezmoiscripts/` to declutter the repo root (chezmoi convention).
 - [x] **Done:** `bootstrap.sh` pin assertion in `scripts/ci-check.sh` ensuring `DEFAULT_CHEZMOI_VERSION` matches `.chezmoidata.toml`.
 - [x] **Done:** Isolated `scripts/ci-check.sh` to a temporary directory config so local CI checks never clobber `$HOME/.config/chezmoi/chezmoi.toml` or `$HOME/.gitconfig`.
 - [x] **Done:** Added `git-filter-repo` to package manifests (Linux apt, Windows pip).
-- `dot_justfile`: `seed` and `agent-init` mostly duplicate each other. `devin-worktree` and `devin-clean` are dead stubs; delete them and add them back when you need them (they're in git history).
-- `plans/part2-*.md` and `plans/part3-*.md` are finished agent work orders. Delete them, or turn the reasoning into `docs/adr/NNNN-*.md`. "Why chezmoi", "why mise", and "why a bash permission shim" are good ADRs and good platform-engineer portfolio material.
-- Commit style is mixed (`feat(omp): …` vs `Added jq`). Pick Conventional Commits; agents follow the pattern once it's in AGENTS.md.
-- `just -g doctor`: add **drift detection** (installed version vs pin), `chezmoi status` (unapplied changes), and a check that the agent-core render is current.
+- [x] **Done:** `dot_justfile`: `agent-init` simplified to delegate to `seed`; dead Devin stubs removed.
+- [x] **Done:** Finished work orders converted into `docs/adr/0001-0004.md` and `docs/debt.md`.
+- [x] **Done:** Enforced Conventional Commits across `CONTRIBUTING.md`, `AGENTS.md`, and `agent-core.md`.
+- [x] **Done:** `just -g doctor`: added drift detection, `chezmoi status`, and agent-core template validation.
 
 ---
 

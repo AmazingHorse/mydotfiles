@@ -64,35 +64,7 @@ seed lang="" archetype="":
 
 [no-cd]
 agent-init archetype="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    agent_home={{quote(agent_home)}}
-    archetype="${1:-}"
-    archetypes_dir="$agent_home/archetypes"
-    list_archetypes() {
-        printf 'Available archetypes:\n'
-        for archetype_file in "$archetypes_dir"/*.md; do
-            [[ -f "$archetype_file" ]] || continue
-            basename "$archetype_file" .md
-        done
-    }
-    if [[ -z "$archetype" ]]; then
-        list_archetypes
-        exit 0
-    fi
-    archetype_file="$archetypes_dir/$archetype.md"
-    if [[ ! -f "$archetype_file" ]]; then
-        printf 'Unknown archetype: %s\n' "$archetype" >&2
-        list_archetypes >&2
-        exit 1
-    fi
-    if [[ -e ./.agent-profile.md ]]; then
-        printf 'Refusing to overwrite .agent-profile.md\n' >&2
-        exit 1
-    fi
-    cp "$archetype_file" ./.agent-profile.md
-    printf 'Created .agent-profile.md from archetype %s\n' "$archetype"
-
+    just --justfile {{quote(justfile())}} seed "" {{quote(archetype)}}
 [no-cd]
 git-guard:
     #!/usr/bin/env bash
@@ -280,10 +252,58 @@ doctor:
         done
         report_value "seeds" "$seed_count found"
     fi
+    printf '\nchezmoi & agent rules:\n'
+    if command -v chezmoi >/dev/null 2>&1; then
+        chez_status="$(chezmoi status 2>/dev/null || true)"
+        if [[ -z "$chez_status" ]]; then
+            report_value "chezmoi status" "clean (in sync)"
+        else
+            report_value "chezmoi status" "changes pending"
+        fi
+        if chezmoi execute-template '{{ "{{" }} includeTemplate "agent-core.md" . {{ "}}" }}' >/dev/null 2>&1; then
+            report_value "agent-core" "valid"
+        else
+            report_value "agent-core" "render error"
+        fi
+    fi
+    printf '\npin drift:\n'
+    if command -v chezmoi >/dev/null 2>&1; then
+        data_file="$(chezmoi source-path 2>/dev/null || true)/.chezmoidata.toml"
+        if [[ -f "$data_file" ]]; then
+            read_pin() {
+                awk -F'"' -v p="$1" '$0 ~ ("^[[:space:]]*" p "[[:space:]]*=") { print $2; exit }' "$data_file"
+            }
+            check_drift() {
+                local tool="$1"
+                local pin="$2"
+                local ver
+                if ! command -v "$tool" >/dev/null 2>&1; then
+                    report_value "$tool" "missing (pin: $pin)"
+                    return
+                fi
+                ver="$($tool --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || true)"
+                if [[ -z "$ver" ]]; then
+                    report_value "$tool" "unknown version"
+                elif [[ "$ver" == "$pin"* ]]; then
+                    report_value "$tool" "$ver (in sync: $pin)"
+                else
+                    report_value "$tool" "$ver (DRIFT: pin $pin)"
+                fi
+            }
+            check_drift "mise" "$(read_pin mise)"
+            check_drift "just" "$(read_pin just)"
+            check_drift "rg" "$(read_pin ripgrep)"
+            check_drift "fd" "$(read_pin fd)"
+            check_drift "zoxide" "$(read_pin zoxide)"
+        fi
+    fi
 
 [no-cd]
-[group('future')]
-devin-worktree branch model="devin/swe-1.6":
+render-rules:
+    chezmoi execute-template '{{ "{{" }} includeTemplate "agent-core.md" . {{ "}}" }}'
+
+[no-cd]
+devin-worktree branch="" model="":
     #!/usr/bin/env bash
     set -euo pipefail
     agent_home={{quote(agent_home)}}
@@ -297,34 +317,21 @@ devin-worktree branch model="devin/swe-1.6":
         printf 'Missing .agent-spec.md; run: just -g plan <task>\n' >&2
         exit 1
     fi
-    if ! command -v omp >/dev/null 2>&1; then
-        printf 'omp is required to run the agent spec.\n' >&2
-        exit 1
-    fi
     if ! command -v devin >/dev/null 2>&1; then
-        printf 'devin-worktree is a future stub for omp → Devin CLI provider integration; devin CLI is not installed.\n' >&2
+        printf 'devin-worktree is a stub for omp -> Devin CLI provider integration; devin CLI is not installed.\n' >&2
         exit 1
     fi
     wt="$(dirname "$repo_root")/wt-${branch//\//-}"
-    # FUTURE/OPTIONAL: omp → Devin CLI provider integration; not part of the active stack.
     if git show-ref --verify --quiet "refs/heads/$branch"; then
         git worktree add "$wt" "$branch"
     else
-        git worktree add -b "$branch" "$wt"
+        git worktree add -b "$branch" "$wt" HEAD
     fi
-    cp .agent-spec.md "$wt/.agent-spec.md"
-    {
-        cat "$agent_home/agent/AGENTS.md"
-        if [[ -f ./.agent-profile.md ]]; then
-            printf '\n\n## Project profile\n'
-            cat ./.agent-profile.md
-        fi
-    } > "$wt/.agent-profile.md"
-    cd "$wt" && exec omp --model "$model" @.agent-spec.md
+    cp ./.agent-spec.md "$wt/.agent-spec.md"
+    (cd "$wt" && devin run --spec .agent-spec.md ${model:+--model "$model"})
 
 [no-cd]
-[group('future')]
-devin-clean branch:
+devin-clean branch="":
     #!/usr/bin/env bash
     set -euo pipefail
     branch={{quote(branch)}}
@@ -333,7 +340,8 @@ devin-clean branch:
         exit 1
     fi
     wt="$(dirname "$repo_root")/wt-${branch//\//-}"
-    if ! git worktree remove "$wt"; then
-        printf 'Could not remove %s; ensure the worktree is clean before retrying.\n' "$wt" >&2
-        exit 1
+    if [[ -d "$wt" ]]; then
+        git worktree remove "$wt"
+    else
+        printf 'Worktree %s not found.\n' "$wt" >&2
     fi
