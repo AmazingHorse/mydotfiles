@@ -1,0 +1,36 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "automerge": false
+    }
+  ],
+  "mise": {
+    "fileMatch": [
+      "(^|/)dot_config/mise/config\\.toml\\.tmpl$"
+    ]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "^\\.chezmoidata\\.toml$"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>[^\\s]+?))(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?\\r?\\n[a-z_]+ = \"(?<currentValue>[^\\s]+?)\""
+      ]
+    }
+  ]
+}

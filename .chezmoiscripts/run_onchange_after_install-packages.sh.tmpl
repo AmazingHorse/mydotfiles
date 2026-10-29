@@ -6,10 +6,6 @@ preferred_oh_my_posh_version='{{ .packages.oh_my_posh }}'
 preferred_git_version='{{ .packages.git }}'
 minimum_git_version='{{ .packages.git_minimum }}'
 preferred_mise_version='{{ .packages.mise }}'
-preferred_just_version='{{ .packages.just }}'
-preferred_zoxide_version='{{ .packages.zoxide }}'
-preferred_fd_version='{{ .packages.fd }}'
-preferred_git_delta_version='{{ .packages.git_delta }}'
 preferred_nerd_fonts_version='{{ .packages.nerd_fonts }}'
 # mise global config hash: {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
 {{ $isWsl := eq (includeTemplate "is-wsl" . | trim) "true" -}}
@@ -118,41 +114,6 @@ download_with_retries() {
     return 1
 }
 
-linux_musl_target_triple() {
-    local architecture
-    architecture="$(uname -m)"
-    case "${architecture}" in
-        x86_64|amd64)
-            printf 'x86_64-unknown-linux-musl\n'
-            ;;
-        aarch64|arm64)
-            printf 'aarch64-unknown-linux-musl\n'
-            ;;
-        *)
-            echo "Unsupported architecture: ${architecture}" >&2
-            return 1
-            ;;
-    esac
-}
-
-delta_linux_target_triple() {
-    local architecture
-    architecture="$(uname -m)"
-    case "${architecture}" in
-        x86_64|amd64)
-            # musl build avoids GLIBC_2.32+ requirements on Ubuntu 20.04.
-            printf 'x86_64-unknown-linux-musl\n'
-            ;;
-        aarch64|arm64)
-            # Upstream ships gnu-only for arm64.
-            printf 'aarch64-unknown-linux-gnu\n'
-            ;;
-        *)
-            echo "Unsupported architecture: ${architecture}" >&2
-            return 1
-            ;;
-    esac
-}
 
 install_pinned_tarball_binary() {
     local tool_name="$1"
@@ -246,12 +207,8 @@ ensure_pinned_oh_my_posh() {
 }
 
 ensure_pinned_cli_tools() {
-    local musl_target
-    local delta_target
     local mise_arch
     local architecture
-    musl_target="$(linux_musl_target_triple)"
-    delta_target="$(delta_linux_target_triple)"
     architecture="$(uname -m)"
     case "${architecture}" in
         x86_64|amd64)
@@ -273,35 +230,12 @@ ensure_pinned_cli_tools() {
         'mise' \
         "${preferred_mise_version}"
 
-    install_pinned_tarball_binary \
-        'just' \
-        "${preferred_just_version}" \
-        "https://github.com/casey/just/releases/download/${preferred_just_version}/just-${preferred_just_version}-${musl_target}.tar.gz" \
-        'just' \
-        "${preferred_just_version}"
-
-    install_pinned_tarball_binary \
-        'zoxide' \
-        "${preferred_zoxide_version}" \
-        "https://github.com/ajeetdsouza/zoxide/releases/download/v${preferred_zoxide_version}/zoxide-${preferred_zoxide_version}-${musl_target}.tar.gz" \
-        'zoxide' \
-        "${preferred_zoxide_version}"
-
-    # ripgrep is managed by mise (aqua:BurntSushi/ripgrep); remove legacy unmanaged binary if present.
-    rm -f "${install_directory}/rg"
-    install_pinned_tarball_binary \
-        'fd' \
-        "${preferred_fd_version}" \
-        "https://github.com/sharkdp/fd/releases/download/v${preferred_fd_version}/fd-v${preferred_fd_version}-${musl_target}.tar.gz" \
-        'fd' \
-        "${preferred_fd_version}"
-
-    install_pinned_tarball_binary \
-        'git-delta' \
-        "${preferred_git_delta_version}" \
-        "https://github.com/dandavison/delta/releases/download/${preferred_git_delta_version}/delta-${preferred_git_delta_version}-${delta_target}.tar.gz" \
-        'delta' \
-        "${preferred_git_delta_version}"
+    # CLIs managed by mise (aqua backend); remove legacy unmanaged binaries if present.
+    rm -f "${install_directory}/rg" \
+          "${install_directory}/fd" \
+          "${install_directory}/delta" \
+          "${install_directory}/zoxide" \
+          "${install_directory}/just"
 }
 
 ensure_agy() {
@@ -438,9 +372,11 @@ fi
 ensure_modern_git
 ensure_pinned_oh_my_posh
 ensure_pinned_cli_tools
+{{ if ne .profile "server" -}}
 ensure_agy
 ensure_pinned_nerd_fonts "${preferred_nerd_fonts_version}"
 configure_remote_editor_fonts
+{{ end -}}
 if ! "${install_directory}/mise" install --yes; then
     echo "Warning: mise could not install global tools." >&2
 fi

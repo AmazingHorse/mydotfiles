@@ -1,15 +1,12 @@
 {{ if eq .chezmoi.os "windows" -}}
 # Install pinned shell dependencies and wire PowerShell 7 to the managed profile.
+# mise global config hash: {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
 
 $ErrorActionPreference = 'Stop'
 
 $PinnedOhMyPoshVersion = '{{ .packages.oh_my_posh }}'
 $PinnedGitVersion = '{{ .packages.git }}'
 $PinnedMiseVersion = '{{ .packages.mise }}'
-$PinnedJustVersion = '{{ .packages.just }}'
-$PinnedZoxideVersion = '{{ .packages.zoxide }}'
-$PinnedFdVersion = '{{ .packages.fd }}'
-$PinnedGitDeltaVersion = '{{ .packages.git_delta }}'
 $PinnedNerdFontsVersion = '{{ .packages.nerd_fonts }}'
 
 function Get-OhMyPoshInstalledVersion {
@@ -454,10 +451,6 @@ if (Get-Command winget -ErrorAction SilentlyContinue) {
     Ensure-WingetPackagePresent -PackageId 'GitHub.cli'
     Ensure-WingetPackagePresent -PackageId 'junegunn.fzf'
     Ensure-WingetPackagePresent -PackageId 'jqlang.jq'
-    Ensure-WingetPackagePresent -PackageId 'Casey.Just' -PinnedVersion $PinnedJustVersion
-    Ensure-WingetPackagePresent -PackageId 'ajeetdsouza.zoxide' -PinnedVersion $PinnedZoxideVersion
-    Ensure-WingetPackagePresent -PackageId 'sharkdp.fd' -PinnedVersion $PinnedFdVersion
-    Ensure-WingetPackagePresent -PackageId 'dandavison.delta' -PinnedVersion $PinnedGitDeltaVersion
 } else {
     Write-Warning 'winget not found; install GitHub CLI / fzf / Tier-1 CLIs manually if needed.'
 }
@@ -466,10 +459,21 @@ if (Get-Command pip -ErrorAction SilentlyContinue) {
     pip install --user --upgrade git-filter-repo 2>$null | Out-Null
 }
 
-# ripgrep is managed by mise (aqua:BurntSushi/ripgrep); remove legacy unmanaged binary if present.
-$legacyRg = Join-Path $LocalBinDirectory 'rg.exe'
-if (Test-Path -LiteralPath $legacyRg) {
-    Remove-Item -LiteralPath $legacyRg -Force -ErrorAction SilentlyContinue
+# CLIs managed by mise (aqua backend); remove legacy unmanaged binaries if present.
+foreach ($legacyBin in @('rg.exe', 'fd.exe', 'delta.exe', 'zoxide.exe', 'just.exe')) {
+    $legacyPath = Join-Path $LocalBinDirectory $legacyBin
+    if (Test-Path -LiteralPath $legacyPath) {
+        Remove-Item -LiteralPath $legacyPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+$MiseBin = Join-Path $LocalBinDirectory 'mise.exe'
+if (Test-Path -LiteralPath $MiseBin) {
+    try {
+        & $MiseBin install --yes
+    } catch {
+        Write-Warning "mise could not install global tools: $_"
+    }
 }
 
 $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')

@@ -5,9 +5,34 @@
 python = "{{ .packages.python }}"
 node = "{{ .packages.node }}"
 bun = "{{ .packages.bun }}"
-"npm:@oh-my-pi/pi-coding-agent" = "{{ .packages.omp }}"
 "aqua:BurntSushi/ripgrep" = "{{ .packages.ripgrep }}"
+"aqua:sharkdp/fd" = "{{ .packages.fd }}"
+"aqua:dandavison/delta" = "{{ .packages.git_delta }}"
+"aqua:ajeetdsouza/zoxide" = "{{ .packages.zoxide }}"
+"aqua:casey/just" = "{{ .packages.just }}"
+"aqua:betterleaks/betterleaks" = "{{ .packages.betterleaks }}"
+
+# AI tooling (omitted on server profile)
+{{ if ne .profile "server" -}}
+"npm:@oh-my-pi/pi-coding-agent" = "{{ .packages.omp }}"
 "npm:agy-crew" = "{{ .packages.agy_crew }}"
+{{ end -}}
+
+# Optional toolsets
+{{ if .toolsets.infra -}}
+"aqua:opentofu/opentofu" = "{{ .packages.opentofu }}"
+"aqua:kubernetes/kubectl" = "{{ .packages.kubectl }}"
+"aqua:helm/helm" = "{{ .packages.helm }}"
+"aqua:derailed/k9s" = "{{ .packages.k9s }}"
+"aqua:getsops/sops" = "{{ .packages.sops }}"
+"aqua:FiloSottile/age" = "{{ .packages.age }}"
+{{ end -}}
+{{ if .toolsets.containers -}}
+"aqua:hadolint/hadolint" = "{{ .packages.hadolint }}"
+{{ end -}}
+{{ if .toolsets.rust -}}
+rust = "stable"
+{{ end -}}
 
 [env]
 # Host tooling (and some IDEs) still launch Windows PowerShell 5.1, where mise

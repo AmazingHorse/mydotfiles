@@ -6,11 +6,24 @@
 #   2. run_onchange_* installer uses the pin
 #   3. shell/profile soft-fail / init (strict match only where noted)
 
+# Default machine profile: "workstation" (default), "server", or "ephemeral"
+profile = "workstation"
+
+[toolsets]
+infra = false
+containers = false
+rust = false
+
 [packages]
+# renovate: datasource=github-releases depName=JanDeDobbeleer/oh-my-posh
 oh_my_posh = "24.8.0"
+# renovate: datasource=github-releases depName=twpayne/chezmoi
 chezmoi = "2.71.1"
+# renovate: datasource=github-releases depName=jdx/mise
 mise = "2026.7.18"
+# renovate: datasource=github-releases depName=casey/just
 just = "1.58.0"
+# renovate: datasource=npm depName=agy-crew
 agy_crew = "0.9.7"
 # Default language toolchain for project scaffolding (Flipper/ufbt, etc.
 # live in separate repos; they consume this via mise.toml / pip).
@@ -19,16 +32,38 @@ python = "3.12"
 node = "24"
 # Bun runtime for omp, via mise global.
 bun = "1.3"
-# Oh My Pi, npm package via mise global.
+# renovate: datasource=npm depName=@oh-my-pi/pi-coding-agent
 omp = "18.13.2"
+# renovate: datasource=github-releases depName=ajeetdsouza/zoxide
 zoxide = "0.10.0"
+# renovate: datasource=github-releases depName=BurntSushi/ripgrep
 ripgrep = "15.2.0"
+# renovate: datasource=github-releases depName=sharkdp/fd
 fd = "10.4.2"
+# renovate: datasource=github-releases depName=dandavison/delta
 git_delta = "0.19.2"
 # Preferred Git across platforms (Windows winget + newer Ubuntu PPAs).
 # Ubuntu 20.04's git-core PPA currently tops out around 2.50.x, so Linux
 # accepts the newest PPA build that still meets git_minimum (zdiff3 floor).
 git = "2.54.0"
 git_minimum = "2.35.0"
-# Nerd Font for Oh My Posh prompt and terminal icons
+# renovate: datasource=github-releases depName=ryanoasis/nerd-fonts
 nerd_fonts = "3.3.0"
+
+# Toolset pins (optional tools)
+# renovate: datasource=github-releases depName=betterleaks/betterleaks
+betterleaks = "2.6.2"
+# renovate: datasource=github-releases depName=opentofu/opentofu
+opentofu = "1.9.0"
+# renovate: datasource=github-releases depName=kubernetes/kubernetes
+kubectl = "1.32.0"
+# renovate: datasource=github-releases depName=helm/helm
+helm = "3.17.0"
+# renovate: datasource=github-releases depName=derailed/k9s
+k9s = "0.40.5"
+# renovate: datasource=github-releases depName=getsops/sops
+sops = "3.9.4"
+# renovate: datasource=github-releases depName=FiloSottile/age
+age = "1.2.1"
+# renovate: datasource=github-releases depName=hadolint/hadolint
+hadolint = "2.12.0"

@@ -11,6 +11,12 @@ if (Test-Path -LiteralPath $LocalBinDirectory) {
         $env:Path = "$LocalBinDirectory;$env:Path"
     }
 }
+$MiseShimsDirectory = Join-Path $env:LOCALAPPDATA 'mise\shims'
+if (Test-Path -LiteralPath $MiseShimsDirectory) {
+    if (-not (($env:Path -split ';') -contains $MiseShimsDirectory)) {
+        $env:Path = "$MiseShimsDirectory;$env:Path"
+    }
+}
 
 function Resolve-PreferredEditorCommand {
     $WaitCapableEditors = @(
@@ -155,16 +161,16 @@ if (Test-Path -LiteralPath $RipgrepConfigPath) {
     $env:RIPGREP_CONFIG_PATH = $RipgrepConfigPath
 }
 
-if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-    Invoke-Expression (& { (zoxide init powershell | Out-String) })
-}
-
 # mise's pwsh chpwd hook needs PowerShell 7+. Skip activate on Windows PowerShell 5.1
 # (Cursor/system shells often still start 5.1) to avoid noisy warnings.
 if ($PSVersionTable.PSVersion.Major -ge 7 -and (Get-Command mise -ErrorAction SilentlyContinue)) {
     mise activate pwsh | Out-String | Invoke-Expression
 } elseif ($PSVersionTable.PSVersion.Major -lt 7) {
     $env:MISE_PWSH_CHPWD_WARNING = '0'
+}
+
+if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    Invoke-Expression (& { (zoxide init powershell | Out-String) })
 }
 
 $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
