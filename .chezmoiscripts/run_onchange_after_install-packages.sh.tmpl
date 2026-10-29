@@ -7,7 +7,7 @@ preferred_git_version='{{ .packages.git }}'
 minimum_git_version='{{ .packages.git_minimum }}'
 preferred_mise_version='{{ .packages.mise }}'
 preferred_nerd_fonts_version='{{ .packages.nerd_fonts }}'
-# mise global config hash: {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
+# mise global config hash: {{ includeTemplate "dot_config/mise/config.toml.tmpl" . | sha256sum }}
 {{ $isWsl := eq (includeTemplate "is-wsl" . | trim) "true" -}}
 
 if ! command -v apt-get >/dev/null 2>&1; then

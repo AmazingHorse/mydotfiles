@@ -1,6 +1,6 @@
 {{ if eq .chezmoi.os "windows" -}}
 # Install pinned shell dependencies and wire PowerShell 7 to the managed profile.
-# mise global config hash: {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
+# mise global config hash: {{ includeTemplate "dot_config/mise/config.toml.tmpl" . | sha256sum }}
 
 $ErrorActionPreference = 'Stop'
 
