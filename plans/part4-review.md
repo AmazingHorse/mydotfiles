@@ -98,7 +98,7 @@ Do the same for **skills**: keep them in one directory (for example `~/.agents/s
 ### 6. Machine profiles
 > **Status: Completed**
 > - [x] Defined `workstation`, `server`, and `ephemeral` profiles in `.chezmoi.toml.tmpl` and `.chezmoidata.toml`.
-> - [x] Auto-detects ephemeral/devcontainer environments (`$CODESPACES`, `$REMOTE_CONTAINERS`, non-TTY) to skip prompts.
+> - [ ] **Partial (audit 2026-10-28):** auto-detects `$CODESPACES` / `$REMOTE_CONTAINERS` only. The non-TTY (`stdinIsATTY`) check was never added to `.chezmoi.toml.tmpl`.
 > - [x] Server profile skips font installations, Windows Terminal edits, agy, and omp via template conditionals and `.chezmoiignore`.
 > - [x] Added verification tests for server and workstation profiles in `scripts/ci-check.sh`.
 
@@ -140,7 +140,7 @@ Do the same for **skills**: keep them in one directory (for example `~/.agents/s
 - [x] **Done:** `bootstrap.sh` pin assertion in `scripts/ci-check.sh` ensuring `DEFAULT_CHEZMOI_VERSION` matches `.chezmoidata.toml`.
 - [x] **Done:** Isolated `scripts/ci-check.sh` to a temporary directory config so local CI checks never clobber `$HOME/.config/chezmoi/chezmoi.toml` or `$HOME/.gitconfig`.
 - [x] **Done:** Added `git-filter-repo` to package manifests (Linux apt, Windows pip).
-- [x] **Done:** `dot_justfile`: `agent-init` simplified to delegate to `seed`; dead Devin stubs removed.
+- [ ] **Partial (audit 2026-10-28):** `dot_justfile`: `agent-init` now delegates to `seed`, but the `devin-worktree` / `devin-clean` stubs are still present (and use an unverified `devin run --spec` invocation).
 - [x] **Done:** Finished work orders converted into `docs/adr/0001-0004.md` and `docs/debt.md`.
 - [x] **Done:** Enforced Conventional Commits across `CONTRIBUTING.md`, `AGENTS.md`, and `agent-core.md`.
 - [x] **Done:** `just -g doctor`: added drift detection, `chezmoi status`, and agent-core template validation.
@@ -218,3 +218,50 @@ flowchart LR
 ```
 
 #3/#4 are small and improve every AI session right away. #1 is the largest refactor and is easier once profiles exist to gate it.
+
+---
+
+## Remaining work (audit 2026-10-28, against `e33594e`)
+
+Items above that are still open, or that were marked done but only partly shipped. Phases are tracked in [part5-platform-roadmap.md](part5-platform-roadmap.md).
+
+### #1 mise as manifest
+- [ ] Commit `mise.lock`.
+- [ ] Migrate `oh-my-posh` to mise (still `ensure_pinned_oh_my_posh` in `install-packages.sh.tmpl`).
+- [ ] Remove stale `~/.local/bin/{rg,fd,...}` copies that shadow mise shims (`path.sh` puts `~/.local/bin` first).
+
+### #2 / #9 Renovate + CI
+- [ ] Renovate: group minor/patch updates and add a weekly schedule.
+- [ ] Pin GitHub Action SHAs (`actions/checkout@v5` is still a tag).
+
+### #3 Single-source agent config
+- [ ] Devin global rules target. `~/.codeium/windsurf/memories/global_rules.md` is unmanaged and still contains the "automation = Node" contradiction.
+- [ ] Single skills directory `~/.agents/skills`, symlinked into omp, Claude Code, agy, and Devin. Today only `agy-crew install --hosts omp` runs.
+- [ ] MCP server list in `.chezmoidata.toml`, rendered per tool. `dot_omp/private_agent/mcp.json` is a static empty file.
+- [ ] Bring `.cursor/rules/dotfiles-bootstrap.mdc` up to date. It still describes the custom installers (`install_pinned_tarball_binary`, the old pin list), which contradicts `AGENTS.md` rule 4.
+
+### #6 Profiles
+- [ ] Non-TTY ephemeral detection (see above).
+- [ ] Remove the duplicated config data. `.chezmoi.toml.tmpl` writes `toolset_*` and `[data.toolsets]`, and `.chezmoidata.toml` also defines `profile` / `[toolsets]`. Pick one source.
+
+### #7 Toolsets
+- [ ] Core: `gh`, `yq`, `uv`, `shfmt` (`direnv` only if mise `[env]` falls short).
+- [ ] Infra: `ansible` via `uv tool`.
+- [ ] Containers: `podman` (or the docker CLI) and `dive`.
+
+### #8 Secrets
+- [ ] Install `bw` (or `rbw`) via mise. The template calls `lookPath "bw"`, but nothing installs it.
+- [ ] Locked vault wipes the secrets file. With `BW_SESSION` unset, the template still renders its header, so `chezmoi apply` overwrites `~/.config/agent-secrets.env` with comments only. Fix it with a `.chezmoiignore` gate or by keeping the existing contents.
+- [ ] `docs/explanation/security-model.md`.
+
+### AI SDLC
+- [ ] `just -g seed` generates a committed `AGENTS.md` skeleton. This is superseded by the copier scaffold in part5 Phase 8.
+- [ ] Pre-commit hooks: add `shellcheck` and `shfmt`. Today only generic hooks and betterleaks run.
+- [ ] Permission trust gate (`~/.omp/agent/trusted-repos`, `trustedAllow` tier). So far it is only documented in the `bootstrap-guard.ts` header.
+
+### Docs
+- [ ] `docs/{tutorials,reference,explanation}/` (only `how-to/add-a-tool.md` exists).
+- [ ] `just docs` → generated `reference/pins.md` and `reference/just-recipes.md`, with a CI freshness check.
+- [ ] `markdownlint` + `lychee` in CI.
+- [ ] `docs-skeleton` seed + `just -g docs-init`. Fold this into the copier template (part5 Phase 8).
+- [ ] Optional: root `llms.txt`.
