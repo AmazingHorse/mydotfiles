@@ -162,7 +162,7 @@ python3 -m json.tool dot_omp/private_agent/mcp.json >/dev/null
 python3 -m json.tool dot_omp/private_agent/permissions.defaults.json >/dev/null
 echo "==> Verify secrets scanning"
 if command -v betterleaks >/dev/null 2>&1; then
-    betterleaks fs --redact .
+    betterleaks dir --no-banner --redact .
 elif command -v gitleaks >/dev/null 2>&1; then
     gitleaks detect --no-git --redact
 else

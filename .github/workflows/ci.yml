@@ -27,9 +27,9 @@ jobs:
       - name: Run Betterleaks secret scan
         run: |
           BETTERLEAKS_VERSION="$(awk -F'"' '/^betterleaks[[:space:]]*=/ { print $2; exit }' .chezmoidata.toml)"
-          curl -sSfL "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/betterleaks_${BETTERLEAKS_VERSION}_linux_amd64.tar.gz" | tar -xz -C "$HOME/.local/bin" betterleaks || true
+          curl -sSfL "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C "$HOME/.local/bin" betterleaks || true
           if command -v betterleaks >/dev/null 2>&1; then
-            betterleaks fs --redact .
+            betterleaks dir --no-banner --redact .
           fi
 
       - name: Run Linux CI checks (fast, network-isolated)

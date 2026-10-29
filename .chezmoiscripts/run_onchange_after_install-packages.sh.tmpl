@@ -19,7 +19,7 @@ export DEBIAN_FRONTEND=noninteractive
 install_directory="${HOME}/.local/bin"
 cache_directory="${HOME}/.cache/mydotfiles/downloads"
 mkdir -p "${install_directory}" "${cache_directory}"
-export PATH="${install_directory}:${PATH}"
+export PATH="${HOME}/.local/share/mise/shims:${install_directory}:${PATH}"
 
 version_ge() {
     local left_version="$1"
@@ -377,7 +377,7 @@ ensure_agy
 ensure_pinned_nerd_fonts "${preferred_nerd_fonts_version}"
 configure_remote_editor_fonts
 {{ end -}}
-if ! "${install_directory}/mise" install --yes; then
+if ! AUBE_ALLOWED_UNPOPULAR_PACKAGES='agy-crew' "${install_directory}/mise" install --yes; then
     echo "Warning: mise could not install global tools." >&2
 fi
 {{ end -}}

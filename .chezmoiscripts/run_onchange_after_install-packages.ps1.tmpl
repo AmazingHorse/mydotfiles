@@ -470,6 +470,7 @@ foreach ($legacyBin in @('rg.exe', 'fd.exe', 'delta.exe', 'zoxide.exe', 'just.ex
 $MiseBin = Join-Path $LocalBinDirectory 'mise.exe'
 if (Test-Path -LiteralPath $MiseBin) {
     try {
+        $env:AUBE_ALLOWED_UNPOPULAR_PACKAGES = 'agy-crew'
         & $MiseBin install --yes
     } catch {
         Write-Warning "mise could not install global tools: $_"

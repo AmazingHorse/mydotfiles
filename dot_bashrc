@@ -15,6 +15,10 @@ case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;
     *) PATH="$HOME/.local/bin:$PATH"; export PATH ;;
 esac
+case ":$PATH:" in
+    *":$HOME/.local/share/mise/shims:"*) ;;
+    *) PATH="$HOME/.local/share/mise/shims:$PATH"; export PATH ;;
+esac
 
 if [ -f "$HOME/.config/shell/helpers.sh" ]; then
     # shellcheck source=/dev/null
