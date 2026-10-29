@@ -28,6 +28,10 @@ test-fast:
 render-rules:
     chezmoi execute-template --source={{justfile_directory()}} '{{ "{{" }} includeTemplate "agent-core.md" . {{ "}}" }}' > {{justfile_directory()}}/agent/cursor-user-rules.md
 
+# Initialize or regenerate chezmoi configuration from .chezmoi.toml.tmpl
+init:
+    chezmoi init --source={{justfile_directory()}}
+
 # Apply managed dotfiles from this source.
 apply:
     chezmoi apply --source={{justfile_directory()}}
