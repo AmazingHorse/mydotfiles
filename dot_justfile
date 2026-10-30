@@ -235,11 +235,11 @@ doctor:
     else
         report_value "approvalMode" "missing or not write"
     fi
-    bootstrap_guard="$agent_home/agent/extensions/bootstrap-guard.ts"
-    if [[ -f "$bootstrap_guard" ]]; then
-        report_value "bootstrap-guard" "present"
+    command_guard="$agent_home/agent/extensions/command-guard/index.ts"
+    if [[ -f "$command_guard" ]]; then
+        report_value "command-guard" "present"
     else
-        report_value "bootstrap-guard" "missing"
+        report_value "command-guard" "missing"
     fi
     seeds_dir="$agent_home/seeds"
     if [[ ! -d "$seeds_dir" ]]; then

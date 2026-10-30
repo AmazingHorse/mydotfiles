@@ -4,7 +4,7 @@
 # Approval model (omp 18.x):
 #   approvalMode "write" auto-approves read-tier tools (read, grep, glob, lsp queries)
 #   and write-tier tools (edit, write, lsp rename). tools.approval.bash "allow"
-#   disables omp's native bash approval so the bootstrap-guard extension's
+#   disables omp's native bash approval so the command-guard extension's
 #   prefix rules (session > project-local > project > user > defaults) decide;
 #   omp's built-in critical-command patterns still prompt as a backstop.
 lsp:

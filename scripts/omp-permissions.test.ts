@@ -7,10 +7,11 @@ import {
 	decideSegment,
 	isProtectedPath,
 	matchesPrefix,
+	parseShellCommand,
 	splitShellSegments,
 	type PermissionLevel,
 	type PermissionRules,
-} from "../dot_omp/private_agent/extensions/bootstrap-guard.ts";
+} from "../dot_omp/private_agent/extensions/command-guard/index.ts";
 
 const CWD = "/work/repo";
 const HOME = "/home/u";
@@ -105,7 +106,7 @@ describe("matchesPrefix", () => {
 describe("isProtectedPath", () => {
 	test("identifies protected agent configs and permissions", () => {
 		expect(isProtectedPath(`${HOME}/.omp/agent/permissions.json`, CWD, HOME)).toBe(true);
-		expect(isProtectedPath(`${HOME}/.omp/agent/extensions/bootstrap-guard.ts`, CWD, HOME)).toBe(true);
+		expect(isProtectedPath(`${HOME}/.omp/agent/extensions/command-guard/index.ts`, CWD, HOME)).toBe(true);
 		expect(isProtectedPath(`${CWD}/.omp/permissions.json`, CWD, HOME)).toBe(true);
 		expect(isProtectedPath(`${CWD}/.omp/permissions.local.json`, CWD, HOME)).toBe(true);
 
@@ -262,5 +263,110 @@ describe("decideSegment precedence", () => {
 			defaultsLevel,
 		];
 		expect(decideSegment(words("cat /usr/share/doc/README"), levels, CWD, HOME)).toEqual({ kind: "allow" });
+	});
+});
+
+describe("command-guard heredocs, templates, and normalizer", () => {
+	const decide = (command: string) => {
+		const parsed = parseShellCommand(command);
+		for (const seg of parsed.parsedSegments) {
+			const d = decideSegment(seg.words, [defaultsLevel], CWD, HOME);
+			if (d.kind !== "allow") return d;
+		}
+		return { kind: "allow" };
+	};
+
+	test("quoted heredocs with chezmoi templates ignore template content", () => {
+		const cmd = `cat > .scratch/test.toml.tmpl << 'EOF'
+{{- $isEphemeral := or (env "CODESPACES") (not stdinIsATTY) -}}
+[data]
+gitName = {{ $gitName | quote }}
+EOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["cat", ".scratch/test.toml.tmpl"]]);
+		expect(decide(cmd)).toEqual({ kind: "allow" });
+	});
+
+	test("quoted heredocs with pipes parse pipe segments without body tokens", () => {
+		const cmd = `cat << "EOF" | grep foo
+some | text | with | pipes
+EOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["cat"], ["grep", "foo"]]);
+		expect(decide(cmd)).toEqual({ kind: "allow" });
+	});
+
+	test("unquoted heredoc without expansions is not complex", () => {
+		const cmd = `cat << EOF
+plain text
+EOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["cat"]]);
+	});
+
+	test("unquoted heredoc with command substitution flags complex", () => {
+		const cmd = `cat << EOF
+$(whoami)
+EOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(true);
+	});
+
+	test("heredoc redirecting outside workspace is blocked", () => {
+		const cmd = `cat > /etc/passwd << 'EOF'
+root:x:0:0:root:/root:/bin/bash
+EOF`;
+		expect(decide(cmd)).toEqual({
+			kind: "ask",
+			rule: "path outside workspace: /etc/passwd",
+			persistable: false,
+		});
+	});
+
+	test("inline chezmoi template rendering is allowed", () => {
+		const cmd = "chezmoi execute-template --source . '{{ includeTemplate \"agent-core.md\" . }}'";
+		expect(decide(cmd)).toEqual({ kind: "allow" });
+	});
+
+	test("inline template with $HOME does not trigger path outside workspace", () => {
+		const cmd = "chezmoi execute-template '{{ $HOME }}'";
+		expect(decide(cmd)).toEqual({ kind: "allow" });
+	});
+
+	test("global flag skipping normalizes command signatures", () => {
+		expect(commandPrefix(words("chezmoi --source . data"))).toBe("chezmoi data");
+		expect(decide("chezmoi --source . data")).toEqual({ kind: "allow" });
+
+		expect(commandPrefix(words("git -C subrepo status"))).toBe("git status");
+		expect(decide("git -C subrepo status")).toEqual({ kind: "allow" });
+
+		expect(commandPrefix(words("just -g doctor"))).toBe("just doctor");
+		expect(decide("just -g doctor")).toEqual({ kind: "allow" });
+	});
+
+	test("git -c remains gated despite flag skipping", () => {
+		expect(decide("git -c core.sshCommand=evil status")).toEqual({
+			kind: "ask",
+			rule: "git -c",
+			persistable: false,
+		});
+	});
+
+	test("comments are ignored", () => {
+		const cmd = `# check repository status
+git status`;
+		const res = parseShellCommand(cmd);
+		expect(res.segments).toEqual([["git", "status"]]);
+		expect(decide(cmd)).toEqual({ kind: "allow" });
+	});
+
+	test("flow keywords are stripped from segment heads", () => {
+		const cmd = `if git status; then echo ok; fi`;
+		const res = parseShellCommand(cmd);
+		expect(res.segments).toEqual([["git", "status"], ["echo", "ok"]]);
+		expect(decide(cmd)).toEqual({ kind: "allow" });
 	});
 });

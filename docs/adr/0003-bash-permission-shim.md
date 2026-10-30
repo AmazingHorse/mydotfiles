@@ -10,7 +10,7 @@ Autonomous coding agents (such as omp) need to run shell commands to inspect fil
 - omp lacks granular, per-command remembered approval rules natively.
 
 ## Decision
-Implement a layered permission extension (`bootstrap-guard.ts`):
+Implement a layered permission extension (`command-guard`):
 1. **Tiered permissions:** `allow` (read-only and safe inspection), `ask` (mutating, network, or destructive operations), `deny` (hard blockers).
 2. **Precedence order:** Session -> Project-local -> Project -> User -> Defaults.
 3. **Safety invariants:** Never allow path traversal outside workspace; protect agent configuration files; prompt before destructive branch modifications (`git branch -D`).
