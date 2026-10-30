@@ -66,3 +66,22 @@ dots:
         exit 1
     }
     Get-Content -LiteralPath $CheatsheetPath
+
+# Clean temporary scratch workspace while preserving empty directory structure.
+[unix]
+clean:
+    find .scratch -mindepth 1 ! -name '.gitkeep' -delete 2>/dev/null || true
+    mkdir -p .scratch
+    touch .scratch/.gitkeep
+
+[windows]
+clean:
+    #!pwsh
+    if (Test-Path '.scratch') {
+        Get-ChildItem -Path '.scratch' -Exclude '.gitkeep' -Force | Remove-Item -Recurse -Force
+    } else {
+        New-Item -ItemType Directory -Path '.scratch' -Force | Out-Null
+    }
+    if (-not (Test-Path '.scratch\.gitkeep')) {
+        New-Item -ItemType File -Path '.scratch\.gitkeep' -Force | Out-Null
+    }

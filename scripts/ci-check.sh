@@ -164,6 +164,23 @@ if ! grep -q "aqua:BurntSushi/ripgrep" "${server_mise_config}"; then
     exit 1
 fi
 
+ephemeral_init_config="${render_directory}/chezmoi-init-ephemeral.toml"
+command chezmoi init --source="${repository_root}" \
+    --config="${ephemeral_init_config}" \
+    --destination="${destination_directory}/ephemeral-dest"
+if ! grep -q 'profile = "ephemeral"' "${ephemeral_init_config}"; then
+    echo "Non-TTY init failed to default to ephemeral profile!" >&2
+    exit 1
+fi
+if ! grep -q 'gitName = "DevContainer Agent"' "${ephemeral_init_config}"; then
+    echo "Non-TTY init failed to default gitName to DevContainer Agent!" >&2
+    exit 1
+fi
+if grep -q 'toolset_' "${ephemeral_init_config}"; then
+    echo "Init config unexpectedly contains duplicate toolset_* keys!" >&2
+    exit 1
+fi
+
 rendered_secrets="${render_directory}/agent-secrets.env"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/dot_config/private_agent-secrets.env.tmpl" > "${rendered_secrets}"

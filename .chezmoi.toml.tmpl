@@ -1,23 +1,45 @@
-{{- $isEphemeral := or (env "CODESPACES") (env "REMOTE_CONTAINERS") -}}
-{{- $gitName := "" -}}
-{{- $gitEmail := "" -}}
-{{- $profile := "workstation" -}}
-{{- if $isEphemeral -}}
-{{-   $profile = "ephemeral" -}}
-{{-   $gitName = "DevContainer Agent" -}}
-{{-   $gitEmail = "agent@devcontainer.local" -}}
-{{- else -}}
+{{- $isEphemeral := or (env "CODESPACES") (env "REMOTE_CONTAINERS") (not stdinIsATTY) -}}
+{{- $gitName := "DevContainer Agent" -}}
+{{- $gitEmail := "agent@devcontainer.local" -}}
+{{- $profile := "ephemeral" -}}
+{{- if hasKey . "profile" -}}
+{{-   $profile = .profile -}}
+{{- end -}}
+{{- if hasKey . "gitName" -}}
+{{-   $gitName = .gitName -}}
+{{- end -}}
+{{- if hasKey . "gitEmail" -}}
+{{-   $gitEmail = .gitEmail -}}
+{{- end -}}
+{{- if not $isEphemeral -}}
 {{-   $profile = promptChoiceOnce . "profile" "Machine profile" (list "workstation" "server" "ephemeral") -}}
 {{-   $gitName = promptStringOnce . "gitName" "Git name" -}}
 {{-   $gitEmail = promptStringOnce . "gitEmail" "Git email" -}}
 {{- end -}}
+{{- $toolsets := get . "toolsets" | default dict -}}
 {{- $toolsetInfra := false -}}
 {{- $toolsetContainers := false -}}
 {{- $toolsetRust := false -}}
-{{- if and (eq $profile "workstation") (not $isEphemeral) -}}
-{{-   $toolsetInfra = promptBoolOnce . "toolset_infra" "Infra tools (tofu/ansible/kubectl)" false -}}
-{{-   $toolsetContainers = promptBoolOnce . "toolset_containers" "Container tools (podman/docker/hadolint)" false -}}
-{{-   $toolsetRust = promptBoolOnce . "toolset_rust" "Rust toolchain" false -}}
+{{- if hasKey $toolsets "infra" -}}
+{{-   $toolsetInfra = get $toolsets "infra" -}}
+{{- else if hasKey . "toolset_infra" -}}
+{{-   $toolsetInfra = get . "toolset_infra" -}}
+{{- else if and (eq $profile "workstation") (not $isEphemeral) -}}
+{{-   $toolsetInfra = promptBoolOnce $toolsets "infra" "Infra tools (tofu/ansible/kubectl)" false -}}
+{{- end -}}
+{{- if hasKey $toolsets "containers" -}}
+{{-   $toolsetContainers = get $toolsets "containers" -}}
+{{- else if hasKey . "toolset_containers" -}}
+{{-   $toolsetContainers = get . "toolset_containers" -}}
+{{- else if and (eq $profile "workstation") (not $isEphemeral) -}}
+{{-   $toolsetContainers = promptBoolOnce $toolsets "containers" "Container tools (podman/docker/hadolint)" false -}}
+{{- end -}}
+{{- if hasKey $toolsets "rust" -}}
+{{-   $toolsetRust = get $toolsets "rust" -}}
+{{- else if hasKey . "toolset_rust" -}}
+{{-   $toolsetRust = get . "toolset_rust" -}}
+{{- else if and (eq $profile "workstation") (not $isEphemeral) -}}
+{{-   $toolsetRust = promptBoolOnce $toolsets "rust" "Rust toolchain" false -}}
 {{- end -}}
 
 umask = 0o022
@@ -26,9 +48,6 @@ umask = 0o022
 gitName = {{ $gitName | quote }}
 gitEmail = {{ $gitEmail | quote }}
 profile = {{ $profile | quote }}
-toolset_infra = {{ $toolsetInfra }}
-toolset_containers = {{ $toolsetContainers }}
-toolset_rust = {{ $toolsetRust }}
 
 [data.toolsets]
 infra = {{ $toolsetInfra }}

@@ -98,7 +98,7 @@ Do the same for **skills**: keep them in one directory (for example `~/.agents/s
 ### 6. Machine profiles
 > **Status: Completed**
 > - [x] Defined `workstation`, `server`, and `ephemeral` profiles in `.chezmoi.toml.tmpl` and `.chezmoidata.toml`.
-> - [ ] **Partial (audit 2026-10-28):** auto-detects `$CODESPACES` / `$REMOTE_CONTAINERS` only. The non-TTY (`stdinIsATTY`) check was never added to `.chezmoi.toml.tmpl`.
+> - [x] **Completed (2026-10-30):** auto-detects `$CODESPACES` / `$REMOTE_CONTAINERS` and non-TTY (`(not stdinIsATTY)`) in `.chezmoi.toml.tmpl`, skipping prompts unattended and verifying in `scripts/ci-check.sh`.
 > - [x] Server profile skips font installations, Windows Terminal edits, agy, and omp via template conditionals and `.chezmoiignore`.
 > - [x] Added verification tests for server and workstation profiles in `scripts/ci-check.sh`.
 
@@ -140,7 +140,7 @@ Do the same for **skills**: keep them in one directory (for example `~/.agents/s
 - [x] **Done:** `bootstrap.sh` pin assertion in `scripts/ci-check.sh` ensuring `DEFAULT_CHEZMOI_VERSION` matches `.chezmoidata.toml`.
 - [x] **Done:** Isolated `scripts/ci-check.sh` to a temporary directory config so local CI checks never clobber `$HOME/.config/chezmoi/chezmoi.toml` or `$HOME/.gitconfig`.
 - [x] **Done:** Added `git-filter-repo` to package manifests (Linux apt, Windows pip).
-- [ ] **Partial (audit 2026-10-28):** `dot_justfile`: `agent-init` now delegates to `seed`, but the `devin-worktree` / `devin-clean` stubs are still present (and use an unverified `devin run --spec` invocation).
+- [x] **Completed (2026-10-30):** Removed dead `devin-worktree` and `devin-clean` stubs from `dot_justfile` and cleaned up references in `README.md`.
 - [x] **Done:** Finished work orders converted into `docs/adr/0001-0004.md` and `docs/debt.md`.
 - [x] **Done:** Enforced Conventional Commits across `CONTRIBUTING.md`, `AGENTS.md`, and `agent-core.md`.
 - [x] **Done:** `just -g doctor`: added drift detection, `chezmoi status`, and agent-core template validation.
@@ -241,8 +241,8 @@ Items above that are still open, or that were marked done but only partly shippe
 - [ ] Bring `.cursor/rules/dotfiles-bootstrap.mdc` up to date. It still describes the custom installers (`install_pinned_tarball_binary`, the old pin list), which contradicts `AGENTS.md` rule 4.
 
 ### #6 Profiles
-- [ ] Non-TTY ephemeral detection (see above).
-- [ ] Remove the duplicated config data. `.chezmoi.toml.tmpl` writes `toolset_*` and `[data.toolsets]`, and `.chezmoidata.toml` also defines `profile` / `[toolsets]`. Pick one source.
+- [x] Non-TTY ephemeral detection (see above).
+- [x] Remove the duplicated config data. `.chezmoi.toml.tmpl` writes toolset_* and [data.toolsets], and .chezmoidata.toml also defines profile / [toolsets]. Pick one source.
 
 ### #7 Toolsets
 - [ ] Core: `gh`, `yq`, `uv`, `shfmt` (`direnv` only if mise `[env]` falls short).

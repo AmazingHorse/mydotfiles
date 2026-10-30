@@ -4,3 +4,6 @@ Thumbs.db
 *~
 .chezmoitemp/
 /bin/
+.scratch/*
+!.scratch/.gitkeep
+node_modules/
