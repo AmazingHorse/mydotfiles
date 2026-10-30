@@ -70,33 +70,38 @@ function Set-WindowsTerminalAppearance {
     }
 
     $Settings = Get-Content -LiteralPath $SettingsPath -Raw | ConvertFrom-Json
-    if (-not $Settings.profiles.defaults) {
-        $Settings.profiles.defaults = [pscustomobject]@{}
-    }
+    $Profiles = if ($Settings.PSObject.Properties['profiles']) { $Settings.profiles } else { $null }
+    if ($Profiles) {
+        if (-not $Profiles.PSObject.Properties['defaults']) {
+            $Profiles | Add-Member -NotePropertyName defaults -NotePropertyValue ([pscustomobject]@{}) -Force
+        }
+        $Profiles.defaults |
+            Add-Member -NotePropertyName bellStyle -NotePropertyValue 'audible' -Force
+        $Profiles.defaults |
+            Add-Member -NotePropertyName bellSound -NotePropertyValue $BellSoundPath -Force
+        $Profiles.defaults |
+            Add-Member -NotePropertyName colorScheme -NotePropertyValue 'Everforest Dark' -Force
+        if (-not $Profiles.defaults.PSObject.Properties['font']) {
+            $Profiles.defaults |
+                Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+        }
+        $Profiles.defaults.font |
+            Add-Member -NotePropertyName face -NotePropertyValue 'CaskaydiaCove NF' -Force
 
-    $Settings.profiles.defaults |
-        Add-Member -NotePropertyName bellStyle -NotePropertyValue 'audible' -Force
-    $Settings.profiles.defaults |
-        Add-Member -NotePropertyName bellSound -NotePropertyValue $BellSoundPath -Force
-    $Settings.profiles.defaults |
-        Add-Member -NotePropertyName colorScheme -NotePropertyValue 'Everforest Dark' -Force
-    if (-not $Settings.profiles.defaults.font) {
-        $Settings.profiles.defaults |
-            Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
-    }
-    $Settings.profiles.defaults.font |
-        Add-Member -NotePropertyName face -NotePropertyValue 'CaskaydiaCove NF' -Force
-
-    if ($Settings.profiles.list) {
-        foreach ($profile in $Settings.profiles.list) {
-            if ($profile.font -and $profile.font.face -eq 'CaskaydiaCove Nerd Font') {
-                $profile.font.face = 'CaskaydiaCove NF'
-            }
-            if ($profile.name -like '*Ubuntu*' -or $profile.source -in @('Microsoft.WSL', 'Windows.Terminal.Wsl')) {
-                if (-not $profile.font) {
-                    $profile | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+        if ($Profiles.PSObject.Properties['list'] -and $Profiles.list) {
+            foreach ($profile in $Profiles.list) {
+                $hasFont = $null -ne $profile.PSObject.Properties['font']
+                if ($hasFont -and $profile.font.PSObject.Properties['face'] -and $profile.font.face -eq 'CaskaydiaCove Nerd Font') {
+                    $profile.font.face = 'CaskaydiaCove NF'
                 }
-                $profile.font | Add-Member -NotePropertyName face -NotePropertyValue 'CaskaydiaCove NF' -Force
+                $isUbuntu = $profile.PSObject.Properties['name'] -and ($profile.name -like '*Ubuntu*')
+                $isWslSource = $profile.PSObject.Properties['source'] -and ($profile.source -in @('Microsoft.WSL', 'Windows.Terminal.Wsl'))
+                if ($isUbuntu -or $isWslSource) {
+                    if (-not $profile.PSObject.Properties['font']) {
+                        $profile | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+                    }
+                    $profile.font | Add-Member -NotePropertyName face -NotePropertyValue 'CaskaydiaCove NF' -Force
+                }
             }
         }
     }

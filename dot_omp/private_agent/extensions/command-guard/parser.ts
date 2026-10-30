@@ -323,7 +323,7 @@ export function parseShellCommand(command: string): ShellParseResult {
 					let line = "";
 					while (index < command.length) {
 						if (command[index] === "\n") {
-							let compareLine = line;
+							let compareLine = line.endsWith("\r") ? line.slice(0, -1) : line;
 							if (heredoc.stripTabs) {
 								compareLine = compareLine.replace(/^\t+/, "");
 							}
@@ -345,7 +345,7 @@ export function parseShellCommand(command: string): ShellParseResult {
 					}
 					// Check last line if stream ended without trailing newline
 					if (line.length > 0) {
-						let compareLine = line;
+						let compareLine = line.endsWith("\r") ? line.slice(0, -1) : line;
 						if (heredoc.stripTabs) {
 							compareLine = compareLine.replace(/^\t+/, "");
 						}

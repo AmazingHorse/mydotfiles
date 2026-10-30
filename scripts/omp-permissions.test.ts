@@ -288,6 +288,17 @@ EOF`;
 		expect(decide(cmd)).toEqual({ kind: "allow" });
 	});
 
+	test("quoted heredocs with Windows CRLF line endings ignore body content", () => {
+		const cmd = "cat > .scratch/crlf.toml << 'EOF'\r\n[data.toolsets]\r\nrust = false\r\nEOF\r\ncat .scratch/crlf.toml";
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([
+			["cat", ".scratch/crlf.toml"],
+			["cat", ".scratch/crlf.toml"],
+		]);
+		expect(decide(cmd)).toEqual({ kind: "allow" });
+	});
+
 	test("quoted heredocs with pipes parse pipe segments without body tokens", () => {
 		const cmd = `cat << "EOF" | grep foo
 some | text | with | pipes

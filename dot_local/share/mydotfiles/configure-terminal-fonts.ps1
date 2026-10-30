@@ -121,24 +121,30 @@ function Update-WindowsTerminalSettings {
             }
 
             $settings = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
-            if (-not $settings.profiles.defaults) {
-                $settings.profiles.defaults = [pscustomobject]@{}
-            }
-            if (-not $settings.profiles.defaults.font) {
-                $settings.profiles.defaults | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
-            }
-            $settings.profiles.defaults.font | Add-Member -NotePropertyName face -NotePropertyValue $TargetFontName -Force
+            $profiles = if ($settings.PSObject.Properties['profiles']) { $settings.profiles } else { $null }
+            if ($profiles) {
+                if (-not $profiles.PSObject.Properties['defaults']) {
+                    $profiles | Add-Member -NotePropertyName defaults -NotePropertyValue ([pscustomobject]@{}) -Force
+                }
+                if (-not $profiles.defaults.PSObject.Properties['font']) {
+                    $profiles.defaults | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+                }
+                $profiles.defaults.font | Add-Member -NotePropertyName face -NotePropertyValue $TargetFontName -Force
 
-            if ($settings.profiles.list) {
-                foreach ($profile in $settings.profiles.list) {
-                    if ($profile.font -and $profile.font.face -eq 'CaskaydiaCove Nerd Font') {
-                        $profile.font.face = $TargetFontName
-                    }
-                    if ($profile.name -like '*Ubuntu*' -or $profile.source -in @('Microsoft.WSL', 'Windows.Terminal.Wsl')) {
-                        if (-not $profile.font) {
-                            $profile | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+                if ($profiles.PSObject.Properties['list'] -and $profiles.list) {
+                    foreach ($profile in $profiles.list) {
+                        $hasFont = $null -ne $profile.PSObject.Properties['font']
+                        if ($hasFont -and $profile.font.PSObject.Properties['face'] -and $profile.font.face -eq 'CaskaydiaCove Nerd Font') {
+                            $profile.font.face = $TargetFontName
                         }
-                        $profile.font | Add-Member -NotePropertyName face -NotePropertyValue $TargetFontName -Force
+                        $isUbuntu = $profile.PSObject.Properties['name'] -and ($profile.name -like '*Ubuntu*')
+                        $isWslSource = $profile.PSObject.Properties['source'] -and ($profile.source -in @('Microsoft.WSL', 'Windows.Terminal.Wsl'))
+                        if ($isUbuntu -or $isWslSource) {
+                            if (-not $profile.PSObject.Properties['font']) {
+                                $profile | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+                            }
+                            $profile.font | Add-Member -NotePropertyName face -NotePropertyValue $TargetFontName -Force
+                        }
                     }
                 }
             }

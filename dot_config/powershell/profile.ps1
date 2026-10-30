@@ -17,6 +17,15 @@ if (Test-Path -LiteralPath $MiseShimsDirectory) {
         $env:Path = "$MiseShimsDirectory;$env:Path"
     }
 }
+$PythonUserScripts = Join-Path $env:APPDATA 'Python\Python*\Scripts'
+$ResolvedPythonScripts = Get-ChildItem -Path $PythonUserScripts -Directory -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+if ($ResolvedPythonScripts -and (Test-Path -LiteralPath $ResolvedPythonScripts)) {
+    if (-not (($env:Path -split ';') -contains $ResolvedPythonScripts)) {
+        $env:Path = "$ResolvedPythonScripts;$env:Path"
+    }
+}
 
 function Resolve-PreferredEditorCommand {
     $WaitCapableEditors = @(

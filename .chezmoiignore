@@ -22,6 +22,12 @@ plans/
 *.bundle
 .DS_Store
 Thumbs.db
+node_modules/
+package.json
+bun.lock
+tsconfig.json
+types/
+.scratch/
 
 {{- if ne .chezmoi.os "windows" }}
 .local/bin/preferred-editor.cmd
