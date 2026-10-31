@@ -28,7 +28,7 @@ flowchart LR
   P9 --> P10
 ```
 
-> **Status (audit 2026-10-28, `e33594e`):** P0–P6 have mostly shipped. The open items are listed in [part4-review.md § Remaining work](part4-review.md#remaining-work-audit-2026-10-28-against-e33594e). P7 has not started.
+> **Status (audit 2026-10-30, `94d9511`):** P0–P6 have mostly shipped. The open items are listed in [part4-review.md § Remaining work](part4-review.md#remaining-work-audit-2026-10-30-against-94d9511). P7 is partly done: the cleanup rows have shipped, but the trust tier and the `seed` → `AGENTS.md` rows remain. The command approver was rewritten as `command-guard/` ([part7](part7-command-approver-plan.md), implemented). **Next focus:** P9 (secrets) + a P8 MVP (copier template, first consumer `thinkcenter-cluster`). P7.5 is deferred and does not block the MVP: until the layout move, the template lives at `templates/project/` and is listed in `.chezmoiignore`.
 
 ---
 
@@ -170,14 +170,14 @@ Then:
 
 | Change | Files |
 |---|---|
-| Move build/test commands that can run repo code (`just`, `npm test`, `npm run *`, `pytest`, `cargo build/test`, `go test`, `chezmoi execute-template`, `chezmoi cat`) into a `trustedAllow` tier that applies only when the repo root is listed in `~/.omp/agent/trusted-repos` | `bootstrap-guard.ts`, `permissions.defaults.json` |
-| Narrow `git branch` to read-only forms | `permissions.defaults.json` |
+| Move build/test commands that can run repo code (`just`, `npm test`, `npm run *`, `pytest`, `cargo build/test`, `go test`, `chezmoi execute-template`, `chezmoi cat`) into a `trustedAllow` tier that applies only when the repo root is listed in `~/.omp/agent/trusted-repos`. Note: `chezmoi execute-template` was moved into plain `allow` by part7; decide whether it moves back | `command-guard/rules.ts`, `command-guard/store.ts`, `permissions.defaults.json` |
+| ~~Narrow `git branch` to read-only forms~~ (done: destructive forms are in `ask`, part4 #5) | `permissions.defaults.json` |
 | Add a `just -g trust` recipe (asks for confirmation; never agent-writable, since the file is protected) | `dot_justfile` |
 | Tests for the trusted vs untrusted decision | `scripts/omp-permissions.test.ts` |
-| Merge `seed` and `agent-init`; make `seed` generate a committed `AGENTS.md` skeleton (`.agent-profile.md` stays personal) | `dot_justfile` |
-| Wire up the Devin recipes as a real target, or remove them, depending on the Devin path answer | `dot_justfile` |
-| `doctor`: pin drift, `chezmoi status`, rendered-rules freshness, profile/toolsets summary | `dot_justfile` |
-| Move `run_*` into `.chezmoiscripts/` | repo root |
+| ~~Merge `seed` and `agent-init`~~ (done). Committed `AGENTS.md` generation is superseded by the copier template (P8) | `dot_justfile` |
+| ~~Wire up or remove the Devin recipes~~ (done: removed in `00d6aaa`) | `dot_justfile` |
+| ~~`doctor`: pin drift, `chezmoi status`, rendered-rules freshness~~ (done, part4 P2) | `dot_justfile` |
+| ~~Move `run_*` into `.chezmoiscripts/`~~ (done) | repo root |
 
 **Verify:** `bun test scripts/omp-permissions.test.ts`; `just check`; `just -g doctor`.
 
@@ -272,7 +272,7 @@ Scope for the next discussion. Known gaps in today's `just -g omp-sandbox`:
 - No `--clearenv`: `BW_SESSION`, every agent key, and `SSH_AUTH_SOCK` are inherited. Pass through an explicit env list, plus the project's secrets from Phase 9.
 - No `--unshare-*`: network, pid, and ipc are shared. Default to `--unshare-all` and re-enable `--share-net` per profile (agents need their model API, which argues for an egress allowlist via a proxy rather than all-or-nothing).
 - Profile source: a per-repo sandbox block (from the Phase 8 template) consumed by a single launcher used by omp, agy, Claude Code, and Devin, not an omp-only recipe.
-- Once it's in place, revisit `docs/debt.md` #1 (`bootstrap-guard.ts`) and the Phase 7 trust tier, since OS-level confinement covers part of their job.
+- Once it's in place, revisit `docs/debt.md` #1 (`command-guard/`) and the Phase 7 trust tier, since OS-level confinement covers part of their job.
 
 ---
 

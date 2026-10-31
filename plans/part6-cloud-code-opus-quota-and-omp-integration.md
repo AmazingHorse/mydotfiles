@@ -79,7 +79,8 @@ Inspection of the `agy` ELF binary (`google3/third_party/jetski/cli`):
 ## 4. Next Steps & Action Plan
 
 ### Phase 1: Graceful Cooldown & Fallback in `omp`
-- [ ] Configure `modelPresets` in `~/.omp/agent/config.yml` so that fallback routes exist when Opus encounters 429 quota exhaustion.
+- [x] Configure `modelPresets` in `~/.omp/agent/config.yml` so that fallback routes exist when Opus encounters 429 quota exhaustion. (Audit 2026-10-30: present locally. Gemini 3.8 Flash is the default/slow role.)
+- [ ] Manage `modelPresets` through chezmoi (`.chezmoitemplates/omp-managed-config.yml` / `modify_config.yml`). Today it lives only in the unmanaged local config, so a new workstation won't get it.
 - [ ] Verify `omp` model presets cleanly select `gemini-3.8-flash:high` for heavy tasks while Opus is cooling down.
 
 ### Phase 2: Multi-Account Pooling (`agy-crew`)

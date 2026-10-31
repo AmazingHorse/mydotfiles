@@ -1,5 +1,7 @@
 # Plan: Devin/AGY-Style Bash Command Approver (`bootstrap-guard.ts`)
 
+> **Status: Implemented** (`32bf2f1`, CRLF fix in `94d9511`). `bootstrap-guard.ts` was split into `dot_omp/private_agent/extensions/command-guard/{parser,normalizer,rules,store,types,index}.ts`. Phases 1–5 shipped. The prompt shows the normalized prefixes in its session/project/global options, alongside "Yes, once". `bun test scripts/omp-permissions.test.ts`: 43 pass. `docs/debt.md` §3 is marked resolved. Line and function references below describe the pre-split file and are kept for history. Follow-up: the trust tier, part5 Phase 7.
+
 ## 1. Problem Analysis (Root Cause of Current Blocking)
 
 In `dot_omp/private_agent/extensions/bootstrap-guard.ts` (tracked in `docs/debt.md` §1 and §3), the shell parser (`splitShellSegments`), command prefix extractor (`commandPrefix`), and hard-check validator (`hardCheckReason`) suffer from four tightly coupled issues:

@@ -88,7 +88,7 @@ Do the same for **skills**: keep them in one directory (for example `~/.agents/s
 
 ### 5. Permission allowlist: some "safe" entries can run arbitrary code
 > **Status: Completed**
-> - [x] Documented threat model trade explicitly in `bootstrap-guard.ts` SHIM header for repo-defined build/test auto-allows.
+> - [x] Documented threat model trade explicitly in `bootstrap-guard.ts` (now `command-guard/`) SHIM header for repo-defined build/test auto-allows.
 > - [x] Gated destructive branch modifications (`git branch -D`, `-d`, `-m`, `-M`, `-c`, `-C`) in `ask` tier.
 > - [x] Added unit tests in `scripts/omp-permissions.test.ts` ensuring `git branch` inspection remains allowed while deletion/rename prompts.
 ---
@@ -221,9 +221,9 @@ flowchart LR
 
 ---
 
-## Remaining work (audit 2026-10-28, against `e33594e`)
+## Remaining work (audit 2026-10-30, against `94d9511`)
 
-Items above that are still open, or that were marked done but only partly shipped. Phases are tracked in [part5-platform-roadmap.md](part5-platform-roadmap.md).
+Items above that are still open, or that were marked done but only partly shipped. Each item was re-checked against the tree at `94d9511`. Phases are tracked in [part5-platform-roadmap.md](part5-platform-roadmap.md).
 
 ### #1 mise as manifest
 - [ ] Commit `mise.lock`.
@@ -257,7 +257,7 @@ Items above that are still open, or that were marked done but only partly shippe
 ### AI SDLC
 - [ ] `just -g seed` generates a committed `AGENTS.md` skeleton. This is superseded by the copier scaffold in part5 Phase 8.
 - [ ] Pre-commit hooks: add `shellcheck` and `shfmt`. Today only generic hooks and betterleaks run.
-- [ ] Permission trust gate (`~/.omp/agent/trusted-repos`, `trustedAllow` tier). So far it is only documented in the `bootstrap-guard.ts` header.
+- [ ] Permission trust gate (`~/.omp/agent/trusted-repos`, `trustedAllow` tier). Not implemented. The old `bootstrap-guard.ts` header documented the threat model; that file is now `command-guard/` (part7).
 
 ### Docs
 - [ ] `docs/{tutorials,reference,explanation}/` (only `how-to/add-a-tool.md` exists).
