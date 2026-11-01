@@ -45,3 +45,13 @@ types/
 .config/agent-secrets.env
 .local/share/mydotfiles/configure-terminal-fonts.ps1
 {{- end }}
+
+{{- $vaultUnlocked := false -}}
+{{- if eq .chezmoi.os "windows" -}}
+{{-   $vaultUnlocked = and (ne (lookPath "bw") "") (ne (env "BW_SESSION") "") -}}
+{{- else if ne (lookPath "rbw") "" -}}
+{{-   $vaultUnlocked = eq (output "sh" "-c" "rbw unlocked >/dev/null 2>&1 && echo 1 || true" | trim) "1" -}}
+{{- end -}}
+{{- if not (and (eq .profile "workstation") $vaultUnlocked) }}
+.config/agent-secrets.env
+{{- end }}

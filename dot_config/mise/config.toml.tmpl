@@ -5,6 +5,15 @@
 python = "{{ .packages.python }}"
 node = "{{ .packages.node }}"
 bun = "{{ .packages.bun }}"
+"github:jdx/fnox" = "{{ .packages.fnox }}"
+"aqua:astral-sh/uv" = "{{ .packages.uv }}"
+"aqua:mikefarah/yq" = "{{ .packages.yq }}"
+"pipx:copier" = "{{ .packages.copier }}"
+{{ if eq .chezmoi.os "windows" -}}
+"aqua:bitwarden/clients" = "{{ .packages.bw }}"
+{{ else -}}
+"cargo:rbw" = { version = "{{ .packages.rbw }}", locked = true }
+{{ end -}}
 "aqua:BurntSushi/ripgrep" = "{{ .packages.ripgrep }}"
 "aqua:sharkdp/fd" = "{{ .packages.fd }}"
 "aqua:dandavison/delta" = "{{ .packages.git_delta }}"

@@ -139,6 +139,11 @@ for mise_tool in \
     'aqua:dandavison/delta' \
     'aqua:ajeetdsouza/zoxide' \
     'aqua:casey/just' \
+    'github:jdx/fnox' \
+    'aqua:astral-sh/uv' \
+    'aqua:mikefarah/yq' \
+    'cargo:rbw' \
+    'pipx:copier' \
     'npm:agy-crew'; do
     if ! grep -q "${mise_tool}" "${rendered_mise_config}"; then
         echo "dot_config/mise/config.toml.tmpl does not render ${mise_tool}" >&2
