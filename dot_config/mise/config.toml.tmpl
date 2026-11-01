@@ -8,11 +8,10 @@ bun = "{{ .packages.bun }}"
 "github:jdx/fnox" = "{{ .packages.fnox }}"
 "aqua:astral-sh/uv" = "{{ .packages.uv }}"
 "aqua:mikefarah/yq" = "{{ .packages.yq }}"
-"pipx:copier" = "{{ .packages.copier }}"
 {{ if eq .chezmoi.os "windows" -}}
 "aqua:bitwarden/clients" = "{{ .packages.bw }}"
 {{ else -}}
-"cargo:rbw" = { version = "{{ .packages.rbw }}", locked = true }
+"github:doy/rbw" = "{{ .packages.rbw }}"
 {{ end -}}
 "aqua:BurntSushi/ripgrep" = "{{ .packages.ripgrep }}"
 "aqua:sharkdp/fd" = "{{ .packages.fd }}"
@@ -24,6 +23,7 @@ bun = "{{ .packages.bun }}"
 # AI tooling (omitted on server profile)
 {{ if ne .profile "server" -}}
 "npm:@oh-my-pi/pi-coding-agent" = "{{ .packages.omp }}"
+"pipx:copier" = "{{ .packages.copier }}"
 "npm:agy-crew" = "{{ .packages.agy_crew }}"
 {{ end -}}
 

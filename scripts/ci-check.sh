@@ -142,7 +142,7 @@ for mise_tool in \
     'github:jdx/fnox' \
     'aqua:astral-sh/uv' \
     'aqua:mikefarah/yq' \
-    'cargo:rbw' \
+    'github:doy/rbw' \
     'pipx:copier' \
     'npm:agy-crew'; do
     if ! grep -q "${mise_tool}" "${rendered_mise_config}"; then

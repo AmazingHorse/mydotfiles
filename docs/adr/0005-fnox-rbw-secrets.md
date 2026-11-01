@@ -6,7 +6,7 @@ Bitwarden Secrets Manager free-tier limits do not suit per-project secrets for t
 
 ## Decision
 
-Use pinned fnox with Bitwarden Password Manager: the rbw provider on Linux/WSL and the bitwarden provider with bw on Windows. Install rbw with mise's locked Cargo backend; upstream does not publish GitHub binaries for it.
+Use pinned fnox with Bitwarden Password Manager: the rbw provider on Linux/WSL and the bitwarden provider with bw on Windows. Install rbw with mise's GitHub backend; its verified release bundles both rbw and rbw-agent.
 
 Store one item per project in folder `proj`, named after the project slug, with one custom field per environment variable. Project `fnox.toml` files contain references, never values. Each secret explicitly sets `provider = "vault"`; this keeps `fnox list` and `fnox doctor` consistent with `fnox exec` and `fnox check`.
 

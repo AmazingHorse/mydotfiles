@@ -30,9 +30,9 @@ rbw = "1.15.0"
 # renovate: datasource=github-releases depName=bitwarden/clients extractVersion=^cli-v(?<version>.+)$
 bw = "2026.10.0"
 # renovate: datasource=github-releases depName=astral-sh/uv
-uv = "0.9.7"
+uv = "0.13.5"
 # renovate: datasource=github-releases depName=mikefarah/yq
-yq = "4.49.2"
+yq = "4.54.1"
 # renovate: datasource=pypi depName=copier
 copier = "9.19.1"
 # renovate: datasource=npm depName=agy-crew

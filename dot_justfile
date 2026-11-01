@@ -297,7 +297,8 @@ doctor:
             check_drift "zoxide" "$(read_pin zoxide)"
         fi
     fi
-    for tool in fnox rbw uv yq; do
+    printf '\n--- Secrets ---\n'
+    for tool in fnox rbw rbw-agent uv yq; do
         if command -v "$tool" >/dev/null 2>&1; then
             report_value "$tool" "$($tool --version 2>/dev/null | head -n 1)"
         else
@@ -310,6 +311,9 @@ doctor:
         else
             report_value "rbw vault" "locked"
         fi
+    fi
+    if [[ -f fnox.toml ]] && command -v fnox >/dev/null 2>&1; then
+        fnox doctor
     fi
 
 [no-cd]
