@@ -297,6 +297,20 @@ doctor:
             check_drift "zoxide" "$(read_pin zoxide)"
         fi
     fi
+    for tool in fnox rbw uv yq; do
+        if command -v "$tool" >/dev/null 2>&1; then
+            report_value "$tool" "$($tool --version 2>/dev/null | head -n 1)"
+        else
+            report_value "$tool" "not installed"
+        fi
+    done
+    if command -v rbw >/dev/null 2>&1; then
+        if rbw unlocked >/dev/null 2>&1; then
+            report_value "rbw vault" "unlocked"
+        else
+            report_value "rbw vault" "locked"
+        fi
+    fi
 
 [no-cd]
 render-rules:

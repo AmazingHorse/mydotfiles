@@ -23,6 +23,18 @@ chezmoi = "2.71.1"
 mise = "2026.7.18"
 # renovate: datasource=github-releases depName=casey/just
 just = "1.58.0"
+# renovate: datasource=github-releases depName=jdx/fnox
+fnox = "1.45.0"
+# renovate: datasource=github-releases depName=doy/rbw
+rbw = "1.15.0"
+# renovate: datasource=github-releases depName=bitwarden/clients extractVersion=^cli-v(?<version>.+)$
+bw = "2026.10.0"
+# renovate: datasource=github-releases depName=astral-sh/uv
+uv = "0.9.7"
+# renovate: datasource=github-releases depName=mikefarah/yq
+yq = "4.49.2"
+# renovate: datasource=pypi depName=copier
+copier = "9.19.1"
 # renovate: datasource=npm depName=agy-crew
 agy_crew = "0.9.7"
 # Default language toolchain for project scaffolding (Flipper/ufbt, etc.
