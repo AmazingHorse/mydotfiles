@@ -168,6 +168,10 @@ if ! grep -q "aqua:BurntSushi/ripgrep" "${server_mise_config}"; then
     echo "Server profile missing core tool ripgrep!" >&2
     exit 1
 fi
+if grep -q "pipx:copier" "${server_mise_config}"; then
+    echo "Server profile unexpectedly rendered copier!" >&2
+    exit 1
+fi
 
 ephemeral_init_config="${render_directory}/chezmoi-init-ephemeral.toml"
 command chezmoi init --source="${repository_root}" \
@@ -249,6 +253,12 @@ if command -v bun >/dev/null 2>&1; then
         const matches = [...data.matchAll(regex)];
         if (matches.length < 5) {
             console.error(`Expected at least 5 Renovate pin matches, got ${matches.length}`);
+            process.exit(1);
+        }
+        const bootstrap = fs.readFileSync("bootstrap.sh", "utf8");
+        const bootstrapMatches = [...bootstrap.matchAll(regex)];
+        if (bootstrapMatches.length !== 1) {
+            console.error(`Expected 1 Renovate pin match in bootstrap.sh, got ${bootstrapMatches.length}`);
             process.exit(1);
         }
     '

@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_URL="${DOTFILES_REPO_URL:-https://github.com/AmazingHorse/mydotfiles.git}"
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_SETUP_SSH=0
+# renovate: datasource=github-releases depName=twpayne/chezmoi
 DEFAULT_CHEZMOI_VERSION='2.71.1'
 
 for argument in "$@"; do

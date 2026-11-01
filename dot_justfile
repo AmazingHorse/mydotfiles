@@ -319,3 +319,119 @@ doctor:
 [no-cd]
 render-rules:
     chezmoi execute-template '{{ "{{" }} includeTemplate "agent-core.md" . {{ "}}" }}'
+
+# Generate and adopt share the same ordered layer application.
+[no-cd]
+[arg("archetype", long="archetype")]
+[arg("company", long="company")]
+[arg("template_ref", long="ref")]
+new dir archetype="" company="" template_ref="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    destination=$1
+    if [[ -e "$destination" && ! -d "$destination" ]]; then
+        printf 'Destination is not a directory: %s\n' "$destination" >&2
+        exit 1
+    fi
+    if [[ -d "$destination" && -n "$(find "$destination" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+        printf 'Destination must be empty: %s\n' "$destination" >&2
+        exit 1
+    fi
+    mkdir -p -- "$destination"
+    destination=$(realpath -- "$destination")
+    git -C "$destination" init
+    just --justfile {{quote(justfile())}} adopt "$destination" --archetype "$2" --company "$3" --ref "$4"
+
+[no-cd]
+[arg("archetype", long="archetype")]
+[arg("company", long="company")]
+[arg("template_ref", long="ref")]
+adopt dir="." archetype="" company="" template_ref="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    destination=$(realpath -- "$1")
+    archetype=$2
+    company=$3
+    if [[ ! -d "$destination" ]]; then
+        printf 'Destination directory does not exist: %s\n' "$destination" >&2
+        exit 1
+    fi
+    template_data="${CHEZMOI_SOURCE_DIR:-$(chezmoi source-path)}/.chezmoidata.toml"
+    base_url=${COPIER_BASE_URL:-$(yq -p toml -oy -r '.templates.base' "$template_data")}
+    archetype_url=""
+    case "$archetype" in
+        "") ;;
+        infra-ops) archetype_url=${COPIER_INFRA_OPS_URL:-$(yq -p toml -oy -r '.templates.infra_ops' "$template_data")} ;;
+        *) printf 'Unknown archetype: %s\n' "$archetype" >&2; exit 1 ;;
+    esac
+    ref_args=()
+    [[ -z "$4" ]] || ref_args=(--vcs-ref "$4")
+    backend=rbw
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) backend=bw ;;
+    esac
+    secret_args=(-d secrets_folder=proj -d bw_profile= -d "bw_backend=$backend")
+    if [[ -n "$company" ]]; then
+        secret_args=(-d "secrets_folder=$company" -d "bw_profile=$company" -d "bw_backend=$backend")
+    fi
+    copier copy --defaults --answers-file .copier-answers.base.yml "${ref_args[@]}" \
+        --skip README.md --skip project.just --skip .agents/project.md \
+        --skip fnox.toml --skip .agents/sandbox.toml --skip .omp/permissions.json \
+        -d "project_name=$(basename -- "$destination")" "${secret_args[@]}" "$base_url" "$destination"
+    if [[ -n "$archetype_url" ]]; then
+        copier copy --defaults --answers-file .copier-answers.infra-ops.yml "${ref_args[@]}" \
+            --data-file "$destination/.copier-answers.base.yml" "$archetype_url" "$destination"
+    fi
+    if [[ -n "$company" ]]; then
+        company_url=${COPIER_COMPANY_URL:-"gh:$company/copier-company"}
+        copier copy --defaults --answers-file .copier-answers.company.yml "${ref_args[@]}" \
+            --data-file "$destination/.copier-answers.base.yml" "$company_url" "$destination"
+    fi
+    printf '\nGenerated %s. Review files, commit, then run just setup and just check.\n' "$destination"
+
+[no-cd]
+[arg("template_ref", long="ref")]
+sync-template dir="." template_ref="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    destination=$(realpath -- "$1")
+    if [[ -n "$(git -C "$destination" status --porcelain)" ]]; then
+        printf 'Commit or stash project changes before updating templates.\n' >&2
+        exit 1
+    fi
+    ref_args=()
+    [[ -z "$2" ]] || ref_args=(--vcs-ref "$2")
+    for layer in base infra-ops company; do
+        answers=".copier-answers.$layer.yml"
+        if [[ -f "$destination/$answers" ]]; then
+            copier update --defaults --skip-answered --answers-file "$answers" "${ref_args[@]}" "$destination"
+            if [[ -n "$(git -C "$destination" ls-files -u)" ]] || \
+                [[ -n "$(find "$destination" -name '*.rej' -not -path '*/.git/*' -print -quit)" ]]; then
+                printf 'Resolve %s template conflicts before continuing.\n' "$layer" >&2
+                exit 1
+            fi
+            if [[ -n "$(git -C "$destination" status --porcelain)" ]]; then
+                git -C "$destination" add -A
+                git -C "$destination" diff --cached --check
+                git -C "$destination" commit -m "chore(template): update $layer layer"
+            fi
+        fi
+    done
+
+[no-cd]
+dev-clone:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    template_data="${CHEZMOI_SOURCE_DIR:-$(chezmoi source-path)}/.chezmoidata.toml"
+    dev_root="$HOME/$(yq -p toml -oy -r '.templates.dev_root' "$template_data")"
+    mkdir -p "$dev_root"
+    for template in copier-base copier-infra-ops; do
+        destination="$dev_root/$template"
+        if [[ ! -e "$destination" ]]; then
+            git clone "https://github.com/AmazingHorse/$template.git" "$destination"
+        fi
+        [[ -d "$destination/.git" ]] || { printf 'Not a template clone: %s\n' "$destination" >&2; exit 1; }
+    done
+    printf 'export COPIER_BASE_URL=%q\n' "$dev_root/copier-base"
+    printf 'export COPIER_INFRA_OPS_URL=%q\n' "$dev_root/copier-infra-ops"
+    printf '# Use --ref HEAD with new/adopt to render committed local template changes.\n'

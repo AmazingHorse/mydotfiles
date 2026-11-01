@@ -243,12 +243,12 @@ Run `just --list` for project-specific verbs.
 
 ## Work packages (each is an omp-ready spec; run omp from the named repo root)
 
-Order: WP0 (done) → WP1 → WP2 → WP3 → WP4 → WP5 → WP6. Each WP = one branch, one PR, Conventional Commits.
+Order: WP0 (done) → WP1 (done) → WP1.5 (done) → WP2 (done) → WP3 (done) → WP4 (done) → WP5 (separate repo) → WP6. Each WP = one branch, one PR, Conventional Commits.
 
 ### WP0: Align part4 and part5 with this plan (mydotfiles, docs only) — **Done (2026-11-01)**
 **Status:** Completed. `plans/part4-review.md` and `plans/part5-platform-roadmap.md` now point to this file and reflect all verified decisions.
 
-### WP1: Dotfiles secrets plumbing (mydotfiles)
+### WP1: Dotfiles secrets plumbing (mydotfiles) — **Done (2026-11-01)**
 **Branch:** `feat/fnox-rbw-secrets`
 **Task:** install `fnox`, `rbw` (Linux/WSL), `bw` (Windows), `uv`, and `yq`; unify Linux global secrets on `rbw`; fix the locked-vault wipe; and add `just -g doctor` secret checks.
 **Files:** `.chezmoidata.toml`, `dot_config/mise/config.toml.tmpl`, `.chezmoiscripts/run_onchange_after_install-packages.sh.tmpl`, `.chezmoiignore`, `dot_config/private_agent-secrets.env.tmpl`, `dot_justfile`, `scripts/ci-check.sh`, `docs/adr/0005-fnox-rbw-secrets.md` (new), `docs/explanation/security-model.md` (new)
@@ -315,7 +315,7 @@ Order: WP0 (done) → WP1 → WP2 → WP3 → WP4 → WP5 → WP6. Each WP = one
 **Verification:** `just test-fast`. Interactive workstation smoke test (run by user after `just apply`): `rbw config set email <email> && rbw login && rbw unlock`.
 **Out of scope:** moving global agent keys to fnox; the template repos.
 
-### WP1.5: Renovate activation and config hardening (mydotfiles)
+### WP1.5: Renovate activation and config hardening (mydotfiles) — **Done (2026-11-01, pending GitHub App install)**
 **Branch:** `ci/renovate-hardening`
 **Task:** make Renovate PR generation active and CI-clean (including in-place PR updates when newer versions release before merge, 7-day release cooldown, and synchronized `chezmoi` pin updates across `.chezmoidata.toml` and `bootstrap.sh`).
 **Files:** `.github/renovate.json`, `bootstrap.sh`, `scripts/ci-check.sh`
@@ -368,7 +368,7 @@ Order: WP0 (done) → WP1 → WP2 → WP3 → WP4 → WP5 → WP6. Each WP = one
 **Verification:** `just test-fast`. After merging and enabling the GitHub App, confirm Renovate opens the Dependency Dashboard issue and version-bump PRs on GitHub.
 **Out of scope:** auto-merging PRs.
 
-### WP2: Template recipes in dotfiles (mydotfiles)
+### WP2: Template recipes in dotfiles (mydotfiles) — **Done (2026-11-01)**
 **Branch:** `feat/template-recipes`
 **Task:** add `copier` pin + `[templates]` data, plus `new`, `adopt`, `sync-template` and `dev-clone` global recipes in `dot_justfile`. (Can be developed and tested against local template paths or after WP3/WP4 publish `v0.1.0`.)
 **Files:** `.chezmoidata.toml`, `dot_config/mise/config.toml.tmpl`, `dot_justfile`, `scripts/ci-check.sh`, `docs/how-to/start-a-project.md` (new)
@@ -424,7 +424,7 @@ Order: WP0 (done) → WP1 → WP2 → WP3 → WP4 → WP5 → WP6. Each WP = one
 **Verification:** `just test-fast`.
 **Out of scope:** template repository contents (WP3, WP4).
 
-### WP3: `copier-base` v0.1.0 (new repo `~/projects/templates/copier-base`)
+### WP3: `copier-base` v0.1.0 (new repo `~/projects/templates/copier-base`) — **Done (`9d01507`, tagged `v0.1.0`)**
 **Branch:** `main` (initial repo creation + `v0.1.0` tag)
 **Task:** build the underlay template repository and publish `AmazingHorse/copier-base` `v0.1.0`.
 **Files:** `copier.yml`, `README.md`, `LICENSE`, `justfile`, `mise.toml`, `.github/workflows/ci.yml`, `tests/render.sh`, and `template/**`:
@@ -478,7 +478,7 @@ Order: WP0 (done) → WP1 → WP2 → WP3 → WP4 → WP5 → WP6. Each WP = one
 **Verification:** `bash tests/render.sh` exits 0.
 **Out of scope:** archetype files; language toolchains.
 
-### WP4: `copier-infra-ops` v0.1.0 (new repo `~/projects/templates/copier-infra-ops`)
+### WP4: `copier-infra-ops` v0.1.0 (new repo `~/projects/templates/copier-infra-ops`) — **Done (`6ea3ee6`, tagged `v0.1.1`)**
 **Branch:** `main` (initial repo creation + `v0.1.0` tag)
 **Task:** build the `infra-ops` archetype template repository and publish `AmazingHorse/copier-infra-ops` `v0.1.0`.
 **Files:** `copier.yml`, `README.md`, `LICENSE`, `justfile`, `mise.toml`, `.github/workflows/ci.yml`, `tests/render.sh`, and `template/**`:
