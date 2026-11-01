@@ -315,6 +315,59 @@ Order: WP0 (done) → WP1 → WP2 → WP3 → WP4 → WP5 → WP6. Each WP = one
 **Verification:** `just test-fast`. Interactive workstation smoke test (run by user after `just apply`): `rbw config set email <email> && rbw login && rbw unlock`.
 **Out of scope:** moving global agent keys to fnox; the template repos.
 
+### WP1.5: Renovate activation and config hardening (mydotfiles)
+**Branch:** `ci/renovate-hardening`
+**Task:** make Renovate PR generation active and CI-clean (including in-place PR updates when newer versions release before merge, 7-day release cooldown, and synchronized `chezmoi` pin updates across `.chezmoidata.toml` and `bootstrap.sh`).
+**Files:** `.github/renovate.json`, `bootstrap.sh`, `scripts/ci-check.sh`
+**Steps:**
+1. In `bootstrap.sh`, add the Renovate annotation immediately above `DEFAULT_CHEZMOI_VERSION` (line 7) so Renovate updates `bootstrap.sh` alongside `.chezmoidata.toml` in the same `twpayne/chezmoi` PR (preventing `scripts/ci-check.sh` line 505 from failing):
+   ```bash
+   # renovate: datasource=github-releases depName=twpayne/chezmoi
+   DEFAULT_CHEZMOI_VERSION='2.71.1'
+   ```
+2. Replace `.github/renovate.json` with:
+   ```json
+   {
+     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+     "extends": [
+       "config:recommended"
+     ],
+     "semanticCommits": "enabled",
+     "minimumReleaseAge": "7 days",
+     "labels": [
+       "dependencies"
+     ],
+     "packageRules": [
+       {
+         "matchUpdateTypes": [
+           "minor",
+           "patch",
+           "pin",
+           "digest"
+         ],
+         "automerge": false
+       }
+     ],
+     "customManagers": [
+       {
+         "customType": "regex",
+         "fileMatch": [
+           "^\\.chezmoidata\\.toml$",
+           "^bootstrap\\.sh$"
+         ],
+         "matchStrings": [
+           "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>[^\\s]+?))(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?\\r?\\n(?:[a-z_]+ = \"|DEFAULT_CHEZMOI_VERSION=')(?<currentValue>[^'\"\\s]+?)['\"]"
+         ]
+       }
+     ]
+   }
+   ```
+   *(Note: `"extends": ["config:recommended"]` keeps one branch/PR per dependency and force-pushes in place when newer versions release before merge; `"minimumReleaseAge": "7 days"` enforces the supply-chain rule; removing `mise.fileMatch` avoids TOML parse warnings on Go-templated `dot_config/mise/config.toml.tmpl`.)*
+3. In `scripts/ci-check.sh` (`Verify Renovate configuration` block, around line 238), also assert that `bootstrap.sh` matches the `customManagers[0].matchStrings[0]` regex at least once (`[...fs.readFileSync("bootstrap.sh", "utf8").matchAll(regex)].length === 1`).
+4. **User step (GitHub UI):** Install the [Mend Renovate GitHub App](https://github.com/apps/renovate) and grant it access to `AmazingHorse/mydotfiles` (plus `copier-base` and `copier-infra-ops` once created in WP3/WP4).
+**Verification:** `just test-fast`. After merging and enabling the GitHub App, confirm Renovate opens the Dependency Dashboard issue and version-bump PRs on GitHub.
+**Out of scope:** auto-merging PRs.
+
 ### WP2: Template recipes in dotfiles (mydotfiles)
 **Branch:** `feat/template-recipes`
 **Task:** add `copier` pin + `[templates]` data, plus `new`, `adopt`, `sync-template` and `dev-clone` global recipes in `dot_justfile`. (Can be developed and tested against local template paths or after WP3/WP4 publish `v0.1.0`.)

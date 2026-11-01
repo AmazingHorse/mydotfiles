@@ -230,10 +230,11 @@ Items above that are still open, or that were marked done but only partly shippe
 - [ ] Migrate `oh-my-posh` to mise (still `ensure_pinned_oh_my_posh` in `install-packages.sh.tmpl`).
 - [ ] Remove stale `~/.local/bin/{rg,fd,...}` copies that shadow mise shims (`path.sh` puts `~/.local/bin` first).
 
-### #2 / #9 Renovate + CI
-- [ ] Renovate: group minor/patch updates and add a weekly schedule.
+### #2 / #9 Renovate + CI (tracked in [part8-secrets-and-templates.md](part8-secrets-and-templates.md) WP1.5)
+- [ ] Enable the [Mend Renovate GitHub App](https://github.com/apps/renovate) on `AmazingHorse/mydotfiles` (and template repos) so Renovate actually executes and opens/updates PRs in place.
+- [ ] Harden `.github/renovate.json`: add `"minimumReleaseAge": "7 days"` (supply-chain rule), `"semanticCommits": "enabled"`, remove the invalid `.tmpl` `mise.fileMatch`, and extend `customManagers` + `bootstrap.sh` (`# renovate: datasource=github-releases depName=twpayne/chezmoi`) so `chezmoi` bumps update both `.chezmoidata.toml` and `bootstrap.sh` `DEFAULT_CHEZMOI_VERSION` in one PR without failing `scripts/ci-check.sh`.
+- [ ] Optional: group minor/patch updates or add a weekly schedule if PR volume becomes noisy.
 - [ ] Pin GitHub Action SHAs (`actions/checkout@v5` is still a tag).
-
 ### #3 Single-source agent config
 - [ ] Devin global rules target. `~/.codeium/windsurf/memories/global_rules.md` is unmanaged and still contains the "automation = Node" contradiction.
 - [ ] Single skills directory `~/.agents/skills`, symlinked into omp, Claude Code, agy, and Devin. Today only `agy-crew install --hosts omp` runs.
