@@ -1,6 +1,6 @@
 # Part 8: Secrets (fnox + rbw) and layered copier templates — MVP for `thinkcenter-cluster`
 
-> **Handoff note (2026-10-30):** written at the end of a design session. The design decisions are settled. The facts under "Verified" were checked against upstream docs. Do the items under "Verify first" **before** writing code that depends on them. This file supersedes the detail of part5 Phases 8 and 9; part5 should be updated to point here (WP0).
+> **Handoff note (updated 2026-11-01):** All design decisions and "Verify first" items have been verified locally and against upstream releases. This file supersedes the detail of part5 Phases 8 and 9; `part4-review.md` and `part5-platform-roadmap.md` have been aligned (WP0 complete). Every Work Package below is written with explicit pins and copy-pasteable skeletons so a smaller coding model (e.g., SWE-2 / Gemini Flash / Sonic) can execute each WP mechanically.
 
 ## Goals
 
@@ -22,38 +22,49 @@
 | Upgrade path | Changing provider (Bitwarden Secrets Manager Teams, Infisical, 1Password, …) is a change to `.config/fnox/provider.toml` in the base template. Each project's secret names stay the same | fnox is provider-agnostic |
 | Vault layout | Bitwarden **folder** = org (`proj` for personal, `<company>` for employer work). **Item** = repo slug. **Custom fields** = env var names | fnox references are `<item>/<field>`, and item names can't contain `/`, so the org goes in the folder |
 | Injection | `fnox exec -- <cmd>`, with `env = "exec"` so secrets never enter the interactive shell. `if_missing = "error"` | Secrets reach only the process that needs them |
-| Global agent keys | **Leave `~/.config/agent-secrets.env` auto-sourcing alone for now** (earlier decision), but fix the locked-vault wipe (WP1). Moving to fnox's global config is a follow-up | |
+| Global agent keys | **Keep `~/.config/agent-secrets.env` auto-sourcing for now**, unified on `rbw` (`rbwFields`) on Linux/WSL and `bw` (`bitwardenFields`) on Windows, with `.chezmoiignore` preventing locked-vault wipes (WP1). Moving global agent keys to fnox's global config is WP6 | |
 | Company specifics | Base answers `secrets_folder` and `bw_profile` (company → `folder = "<company>"`, `profile = "<company>"` → `RBW_PROFILE`). The private overlay adds only company-only files (CODEOWNERS, company CI, extra agent rules). The company → URL/folder/profile map lives in an unmanaged `~/.config/mydotfiles/companies.toml` | No employer names in public repos, and no files shared between layers |
 | `.chezmoiroot` (part5 P7.5) | **Demoted to optional tidying.** Templates no longer live in this repo, so there's nothing dev-only to hide from servers | |
 
-## Verified (upstream docs, 2026-10-30)
+## Verified (upstream docs + local CLI verification, 2026-11-01)
 
-- **Copier** (`copier.readthedocs.io/en/stable/configuring/`):
-  - `_subdirectory` separates template metadata from template code. It is not meant for multiple templates in one repo.
-  - Multiple templates per project are supported via `copier copy -a .copier-answers.<x>.yml` and `copier update -a ...`.
-  - `_tasks` runs post-copy/update commands.
-  - Questions support `secret: true` (never saved to the answers file), `when`, `validator`, `choices`, and dynamic defaults.
+- **Copier 9.19.1** (`copier.readthedocs.io/en/stable/configuring/`, tested locally via `pipx:copier@9.19.1`):
+  - `_subdirectory: template` separates template metadata from template code. It is not meant for multiple templates in one repo.
+  - Multiple templates per project are supported via `copier copy -a .copier-answers.<x>.yml` and `copier update -a .copier-answers.<x>.yml --skip-answered` (`-A`).
+  - **Answers file requirement:** every template's `template/` directory **must** include `{{ _copier_conf.answers_file }}.jinja` containing `{{ _copier_answers|to_nice_yaml }}`—otherwise Copier never writes `.copier-answers.<layer>.yml` and `copier update` fails.
+  - **Symlink preservation:** `_preserve_symlinks: true` **must** be set in `copier.yml` when `template/CLAUDE.md` is a symlink to `AGENTS.md`. With Copier's default (`_preserve_symlinks: false`), Copier tries to dereference `template/CLAUDE.md -> template/AGENTS.md` inside the source tree before rendering `.jinja`, crashing with `FileNotFoundError`.
+  - **`_skip_if_exists` on update:** verified that `_skip_if_exists` skips project-owned files on **both** `copier copy` and `copier update` even when the template's version of that file changes between tags.
+  - **`gh:` shortcut:** verified `copier._vcs.get_repo("gh:AmazingHorse/copier-base")` expands natively to `https://github.com/AmazingHorse/copier-base.git`.
   - Without `--vcs-ref`, copier uses the latest **PEP 440 tag**, so templates must be tagged (`v0.1.0`).
-- **chezmoi:** `init --recurse-submodules` defaults to `true`. chezmoi has `bitwardenSecrets` (bws) and `rbw` / `rbwFields` template functions.
+- **chezmoi:** `init --recurse-submodules` defaults to `true`. chezmoi has `rbw` / `rbwFields` (invokes `rbw get --raw <item>`) and `bitwarden` / `bitwardenFields` template functions.
 - **Bitwarden Secrets Manager:** the free plan has 2 users, 3 projects and 3 machine accounts; Teams has unlimited projects. `bws run --project-id --no-inherit-env -- cmd` exists. Kept only as a future provider.
-- **fnox v1.45.0** (`fnox.jdx.dev`):
+- **fnox v1.45.0** (`fnox.jdx.dev`, tested locally):
   - **Config load order:** global `~/.config/fnox/config.toml`, then for each directory from root down: `fnox.toml` / `.fnox.toml` / `.config/fnox.toml`, then `fnox.<profile>.toml`, then `fnox.local.toml` (never commit). `root = true` stops the upward search.
   - **Top-level config fields:** `import` (array; relative paths resolve against the declaring file), `env` (`true` / `"exec"` / `false`), `if_missing` (`error` / `warn` / `ignore`), `default_provider`, `profiles`, `proxy`, `mcp`, `daemon`.
-  - **Bitwarden provider:** `type = "bitwarden"`, `backend = "rbw"` (marked **experimental** upstream) or `"bw"` (needs `BW_SESSION`), plus `folder`, `profile` (rbw → `RBW_PROFILE`) and `auth_command = "rbw unlock"`. References are `Item` (password), `Item/username|password|notes|uri|totp`, or `Item/<custom field>`. The provider is read-only: you create items in Bitwarden, not with `fnox set`.
-  - **CLI:** `exec`, `get`, `list`, `check [-a]`, `doctor`, `config-files`, `provider test`, `scan`, `proxy run [--sandbox]`, `mcp`, `--non-interactive`, `--if-missing`.
-  - **`[proxy]`:** `egress = "strict"`, `allow_domains`, `allow_private`, and `[[proxy.rules]]` that inject a secret into requests for a matching domain/method/path, so the process never sees the value. This is a strong candidate for part5 Phase 10 (agent sandbox).
-  - **mise integration:** fnox installs via mise (`mise use fnox`, registry `github:jdx/fnox`). jdx recommends wrapping commands with `fnox exec` over the experimental `mise-env-fnox` plugin.
-- **mise registry (checked locally):** `fnox` → `github:jdx/fnox`, `copier` → `pipx:copier`, `ansible-core` → `pipx:ansible-core`, `yamllint` → `pipx:yamllint`, `opentofu` → `aqua:opentofu/opentofu`, `actionlint` → `aqua:rhysd/actionlint`, `shfmt` → `aqua:mvdan/sh`, `uv`, `yq`, `gh`, `lychee`, `pre-commit` (aqua). **`rbw` is not in the registry.** `ansible-lint` was not checked.
-
-## Verify first (unresolved; check before depending on them)
-
-1. **rbw install route on Linux/WSL.** In order of preference: Ubuntu `apt-cache policy rbw` (add to the apt package list if noble has it) → GitHub release binaries at `doy/rbw` (`github:doy/rbw` via mise if assets exist) → `cargo install rbw` (needs the rust toolset). Pick the first that works and record it in ADR 0005. On Windows, rbw is unsupported: fall back to `backend = "bw"` there (base question `bw_backend`).
-2. **fnox `backend = "rbw"` end to end** (it's experimental): `rbw login && rbw unlock`, create folder `proj`, item `fnox-smoke` with custom field `HELLO=world`, then `fnox exec -- printenv HELLO` from a scratch dir with the provider config below. If it fails, use `backend = "bw"` and document `export BW_SESSION=$(bw unlock --raw)`.
-3. **Does `import` carry `[providers]`** from `.config/fnox/provider.toml` into `fnox.toml` as expected? Check with `fnox provider list` and `fnox config-files` in a scratch dir.
-4. **Release ages (supply-chain rule):** pin fnox, copier and rbw to versions published at least 7 days ago (`gh api repos/jdx/fnox/releases`, the PyPI JSON for copier).
-5. **Copier's `gh:` URL shortcut** (`gh:AmazingHorse/copier-base`). If unsupported, use `https://github.com/AmazingHorse/copier-base.git`.
-6. **Copier `_skip_if_exists`** behaviour on `copier update` (it should never overwrite a project-owned file). Test with a scratch render.
-7. **just `import?`** (optional import) and recipe override across imports: confirm `set allow-duplicate-recipes` is needed so `archetype.just` can override base `check`/`lint`. Check `just --help` / the docs for the pinned just 1.58.
+  - **`import` & secret syntax quirk (verified):** `import = [".config/fnox/provider.toml"]` carries `[providers.vault]` into `fnox.toml` (`fnox config-files` and `fnox provider list` both list `vault (bitwarden)`). However, if a secret entry omits `provider = "vault"` (writing only `{ value = "slug/KEY" }`), `fnox list` and `fnox doctor` misreport it as `stored value` / `provider: plain` even though `fnox exec` and `fnox check` use `default_provider`. **Always write `{ provider = "vault", value = "slug/KEY" }` in `[secrets]`** so `list`, `doctor`, `check`, `get`, and `exec` all agree.
+  - **Bitwarden `rbw` backend (verified):** `type = "bitwarden"`, `backend = "rbw"` invokes `rbw get <item> --field <field> --folder <folder>` (with `RBW_PROFILE=<profile>` when `profile` is set), which matches `rbw 1.15.0`'s exact CLI flags. On Windows (where `rbw` is unsupported), `backend = "bw"` uses `BW_SESSION`.
+  - **CLI:** `exec`, `get`, `list`, `check [-a]`, `doctor`, `config-files`, `provider list`, `provider test`, `scan`, `proxy run [--sandbox]`, `mcp`, `--no-daemon`, `--if-missing`.
+  - **`[proxy]`:** `egress = "strict"`, `allow_domains`, `allow_private`, and `[[proxy.rules]]` that inject a secret into requests for a matching domain/method/path, so the process never sees the value (candidate for part5 Phase 10).
+- **rbw install route on Linux/WSL (verified):**
+  - Ubuntu 24.04 (`noble`) apt does **not** package `rbw` (`apt-cache policy rbw` is empty).
+  - `"github:doy/rbw"` (`1.15.0`) installs cleanly via mise from `rbw_1.15.0_linux_amd64.tar.gz` and bundles **both** `rbw` and `rbw-agent`.
+  - `rbw unlock` requires a `pinentry` binary on Linux/WSL (`pinentry-curses` from apt).
+  - Because `doy/rbw` publishes only Linux and macOS tarballs, gate `"github:doy/rbw"` with `{{ if ne .chezmoi.os "windows" }}` in `dot_config/mise/config.toml.tmpl`, and install `"aqua:bitwarden/clients"` (`bw`) on Windows (`{{ if eq .chezmoi.os "windows" }}`).
+- **mise registry & `.config/mise/conf.d/*.toml` (verified):**
+  - `pipx:*` packages in mise (`pipx:copier`, `pipx:ansible-core`, `pipx:ansible-lint`, `pipx:yamllint`) **require `uv` (`aqua:astral-sh/uv`) or `pipx` to be installed first** (`mise` uses `uvx` automatically when `uv` is present).
+  - `ansible-lint` is not in the mise short registry; specify `"pipx:ansible-lint"` explicitly.
+  - Verified `mise cfg` and `mise ls --current` automatically load `.config/mise/conf.d/<archetype>.toml` alongside `mise.toml` in a project directory.
+- **Release ages ≥ 7 days old as of 2026-11-01 (verified):**
+  - `fnox` (`github:jdx/fnox`): `1.45.0` (published `2026-10-16`)
+  - `rbw` (`github:doy/rbw`): `1.15.0` (published `2026-03-04`)
+  - `bw` (`aqua:bitwarden/clients`): `2026.10.0` (published `2026-10-15`, tag `cli-v2026.10.0`)
+  - `copier` (`pipx:copier`): `9.19.1` (published `2026-08-29`)
+  - `uv` (`aqua:astral-sh/uv`): `0.13.5` (published `2026-10-22`)
+  - `yq` (`aqua:mikefarah/yq`): `4.54.1` (published `2026-09-29`)
+- **just 1.58.0 `import?`, `allow-duplicate-recipes`, and `[arg]` (verified):**
+  - In `just 1.58.0`, recipes defined in the root `justfile` **always** override recipes in `import`ed files, and **earlier** `import` statements override **later** `import` statements.
+  - Therefore, `copier-base` puts only settings, `default: @just --list`, and `import? 'project.just'`, `import? 'archetype.just'`, `import '.config/just/base.just'` in root `justfile`, and places the base fallback recipes (`setup`, `check`, `lint`, `test`, `fmt`, `smoke`, `doctor`) in `.config/just/base.just`. That gives exact `project.just` > `archetype.just` > `.config/just/base.just` override priority.
+  - `just 1.58.0` supports `[arg("archetype", long="archetype")]` and `[arg("company", long="company")]`, enabling `just -g new <dir> [--archetype <name>] [--company <name>]`.
 
 ## Architecture
 
@@ -73,8 +84,8 @@ project repo
 
 | Concern | `copier-base` owns | Archetype owns | Project owns (seeded once via `_skip_if_exists`) |
 |---|---|---|---|
-| Tasks | `justfile`: settings, standard verbs (`setup check test fmt lint run build smoke doctor`), `import? 'archetype.just'`, `import? 'project.just'` | `archetype.just` (overrides `check`/`lint`/`fmt`/`test` bodies, adds archetype verbs) | `project.just` |
-| Tools | `mise.toml` (core: `fnox`, `just`, `pre-commit`, `actionlint`, `shfmt`) | `.config/mise/conf.d/<archetype>.toml` (verify mise loads `.config/mise/conf.d/*.toml` in a project; otherwise `mise.<archetype>.toml` via `MISE_ENV`) | `mise.local.toml` (gitignored) |
+| Tasks | `justfile` (settings, `default`, `import? 'project.just'`, `import? 'archetype.just'`, `import '.config/just/base.just'`) + `.config/just/base.just` (`setup check test fmt lint smoke doctor`) | `archetype.just` (overrides `check`/`lint`/`fmt`/`test` bodies, adds archetype verbs) | `project.just` |
+| Tools | `mise.toml` (core: `fnox`, `just`, `pre-commit`, `actionlint`, `shfmt`) | `.config/mise/conf.d/<archetype>.toml` (verified: mise loads `.config/mise/conf.d/*.toml` automatically) | `mise.local.toml` (gitignored) |
 | Secrets | `.config/fnox/provider.toml` | (none) | `fnox.toml` (`[secrets]` refs) |
 | Agent context | `AGENTS.md` (universal rules + verb table + a link to `.agents/archetype.md`), `CLAUDE.md` → `AGENTS.md` symlink | `.agents/archetype.md`, `.agents/skills/<archetype>-*/SKILL.md` | `.agents/project.md` (layout, gotchas), `.agents/skills/<project>-*` |
 | Sandbox intent | `.agents/sandbox.toml` schema + defaults | (none) | values inside it, seeded once |
@@ -112,21 +123,33 @@ if_missing = "error"
 
 [secrets]
 # Bitwarden: folder "{{ secrets_folder }}", item "{{ project_slug }}", one custom field per variable.
-# EXAMPLE_TOKEN = { value = "{{ project_slug }}/EXAMPLE_TOKEN" }
+# Always include `provider = "vault"` so `fnox list` and `fnox doctor` match `fnox exec`/`fnox check`.
+# EXAMPLE_TOKEN = { provider = "vault", value = "{{ project_slug }}/EXAMPLE_TOKEN" }
 ```
 
-`copier-base/template/justfile.jinja` (shape; verify the `allow-duplicate-recipes` semantics, Verify-first item 7):
+`copier-base/template/{{ _copier_conf.answers_file }}.jinja`:
+```yaml
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+{{ _copier_answers|to_nice_yaml }}
+```
+
+`copier-base/template/justfile.jinja`:
 ```just
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set allow-duplicate-recipes
 set positional-arguments
 
-import? 'archetype.just'
-import? 'project.just'
-
 default:
     @just --list
 
+# Earlier imports win in just 1.58: project > archetype > base.
+import? 'project.just'
+import? 'archetype.just'
+import '.config/just/base.just'
+```
+
+`copier-base/template/.config/just/base.just`:
+```just
 # Install pinned tools and git hooks.
 setup:
     mise install
@@ -154,6 +177,16 @@ doctor:
     fnox check || true
 ```
 Rule: secrets are only used by recipes that touch live systems, which wrap the command in `fnox exec --`. `check` must pass with no vault access, on CI.
+
+`copier-base/template/mise.toml`:
+```toml
+[tools]
+"github:jdx/fnox" = "1.45.0"
+"aqua:casey/just" = "1.58.0"
+"aqua:pre-commit/pre-commit" = "4.7.0"
+"aqua:rhysd/actionlint" = "1.7.12"
+"aqua:mvdan/sh" = "3.14.1"
+```
 
 `copier-base/template/.agents/sandbox.toml.jinja` (intent only until part5 Phase 10 consumes it):
 ```toml
@@ -201,7 +234,7 @@ Run `just --list` for project-specific verbs.
 | CI `runs-on: self-hosted` on `pull_request` for a public repo | **Security hole:** fork PRs run code on a LAN machine | GitHub-hosted runners only for the `check` CI. Self-hosted only for future gated apply jobs (environment protection, no fork PRs) |
 | CI downloads `sops-v3.x.linux.amd64` (that URL doesn't exist), unpinned `pip install`, `checkout@v4` | **Broken, not reproducible** | Base CI: `jdx/mise-action` + `just check`, actions pinned by SHA |
 | `ansible.cfg`: `host_key_checking = False`, `stdout_callback = yaml`, `collections_paths` | **Insecure / deprecated** | `host_key_checking = True` with a managed `known_hosts` (from the manifest), `callback_result_format = yaml`, `collections_path`, plus `requirements.yml` pinning collections |
-| No `mise.toml`, tools assumed on the host | **Not reproducible** | infra-ops `.config/mise/conf.d/infra-ops.toml`: `ansible-core`, `ansible-lint`, `yamllint`, `opentofu` |
+| No `mise.toml`, tools assumed on the host | **Not reproducible** | infra-ops `.config/mise/conf.d/infra-ops.toml`: `"pipx:ansible-core"`, `"pipx:ansible-lint"`, `"pipx:yamllint"`, `"aqua:opentofu/opentofu"` |
 | `just test` hits live endpoints; no `check` | **No safe gate** | Move to `project.just` as `smoke-boot`. `check` = yamllint + ansible-lint + `ansible-playbook --syntax-check` |
 | `.agents/AGENTS.md` (hidden, includes a stale matchbox file map, a "do not re-debate" decision table, and ~40 lines of PXE debugging) | **Mis-scoped** | Root `AGENTS.md` (base). Decision table → `docs/adr/0001-0010`. PXE notes → `docs/investigations/pxe-uefi.md`. Fix the file map (nginx, not matchbox) in `.agents/project.md` |
 | "Agent: don't run commands on the host" lives in the scratchpad | **Unenforced** | `.omp/permissions.json` project denies (`just up`, `just site`, `just bootstrap`, `docker compose`, `ansible-playbook` without `--syntax-check`/`--check`) + `sandbox.toml` |
@@ -210,89 +243,265 @@ Run `just --list` for project-specific verbs.
 
 ## Work packages (each is an omp-ready spec; run omp from the named repo root)
 
-Order: WP0 → WP1 → WP2 → WP3 → WP4 → WP5 → WP6. WP2 and WP3 need the Verify-first items done. Each WP = one branch, one PR, Conventional Commits.
+Order: WP0 (done) → WP1 → WP2 → WP3 → WP4 → WP5 → WP6. Each WP = one branch, one PR, Conventional Commits.
 
-### WP0: Align part5 with this plan (mydotfiles, docs only)
-**Task:** point part5 Phases 8/9 at this file and record the changed decisions. Assumption: docs only.
-**Files:** `plans/part5-platform-roadmap.md`
-**Steps:**
-1. In the part5 status note, replace "P8 MVP … `templates/project/`" with "see part8". Mark P7.5 as optional. Check: `rg -n 'part8' plans/part5-platform-roadmap.md`.
-2. In Phase 8: replace the "Personal base copier template at `templates/project/`" row and the `copier.yml`/`_subdirectory` rows with "separate repos `copier-base` + archetypes; see part8". Change open question 10 to "resolved: one repo per template". Check: `rg -n '_subdirectory|templates/project' plans/part5-platform-roadmap.md` returns only historical mentions.
-3. In Phase 9: replace `with-secrets`/`bws` with "fnox + rbw; see part8". In the "Decided" list, change "Bitwarden item per project `<org>/<repo>`" to "folder `<org>`, item `<repo>`".
-4. In Phase 10: add a row "evaluate `fnox proxy run --sandbox` with `[proxy] egress = "strict"` before building a custom bwrap launcher".
-**Verification:** `just test-fast`
-**Out of scope:** any non-doc file.
+### WP0: Align part4 and part5 with this plan (mydotfiles, docs only) — **Done (2026-11-01)**
+**Status:** Completed. `plans/part4-review.md` and `plans/part5-platform-roadmap.md` now point to this file and reflect all verified decisions.
 
 ### WP1: Dotfiles secrets plumbing (mydotfiles)
-**Task:** install fnox and rbw, fix the locked-vault wipe, and add `just -g doctor` secret checks. Assumption: Verify-first items 1, 2 and 4 are done.
-**Files:** `.chezmoidata.toml`, `dot_config/mise/config.toml.tmpl`, `.chezmoiscripts/run_onchange_after_install-packages.sh.tmpl` (only if rbw comes from apt), `.chezmoiignore`, `dot_config/private_agent-secrets.env.tmpl`, `dot_justfile` (`doctor`), `docs/adr/0005-fnox-rbw-secrets.md` (new), `docs/explanation/security-model.md` (new), `.github/renovate.json` (if the new pins need a datasource)
+**Branch:** `feat/fnox-rbw-secrets`
+**Task:** install `fnox`, `rbw` (Linux/WSL), `bw` (Windows), `uv`, and `yq`; unify Linux global secrets on `rbw`; fix the locked-vault wipe; and add `just -g doctor` secret checks.
+**Files:** `.chezmoidata.toml`, `dot_config/mise/config.toml.tmpl`, `.chezmoiscripts/run_onchange_after_install-packages.sh.tmpl`, `.chezmoiignore`, `dot_config/private_agent-secrets.env.tmpl`, `dot_justfile`, `scripts/ci-check.sh`, `docs/adr/0005-fnox-rbw-secrets.md` (new), `docs/explanation/security-model.md` (new)
 **Steps:**
-1. Add the pins `fnox` (`# renovate: datasource=github-releases depName=jdx/fnox`) and `rbw` (route from Verify-first item 1). Add `"fnox" = "{{ .packages.fnox }}"` to the mise config, outside any profile gate (fnox is useful on servers too). Check: `chezmoi execute-template < dot_config/mise/config.toml.tmpl | rg fnox`.
-2. Locked-vault fix: in `.chezmoiignore`, add a block that ignores `.config/agent-secrets.env` when `not (and (lookPath "bw") (env "BW_SESSION"))`, so an apply with a locked vault leaves the existing file untouched. Check: `env -u BW_SESSION chezmoi diff ~/.config/agent-secrets.env` shows no change.
-3. `doctor`: add a `secrets:` section that prints `fnox version`, `rbw unlocked` status (`rbw unlocked && echo unlocked || echo locked`), and `fnox doctor` when run inside a repo containing `fnox.toml`. Check: `just -g doctor`.
-4. Write ADR 0005 (context: bws free-tier limits; decision: fnox + Bitwarden PM via rbw; folder/item/field convention; consequences: no secrets in git, network needed, rbw backend is experimental with a `bw` fallback, Windows uses `bw`) and `security-model.md` (what's global, what's per-project, and that the sandbox doesn't get the token).
-5. CI: add a check in `scripts/ci-check.sh` that the rendered mise config contains `fnox`. Check: `just test-fast`.
-**Verification:** `just test-fast`; `just apply` on the workstation; `fnox --version`; `rbw --version`.
+1. In `.chezmoidata.toml` under `[packages]`, add these exact pins (all >7 days old):
+   ```toml
+   # renovate: datasource=github-releases depName=jdx/fnox
+   fnox = "1.45.0"
+   # renovate: datasource=github-releases depName=doy/rbw
+   rbw = "1.15.0"
+   # renovate: datasource=github-releases depName=bitwarden/clients extractVersion=^cli-v(?<version>.+)$
+   bw = "2026.10.0"
+   # renovate: datasource=github-releases depName=astral-sh/uv
+   uv = "0.13.5"
+   # renovate: datasource=github-releases depName=mikefarah/yq
+   yq = "4.54.1"
+   ```
+2. In `dot_config/mise/config.toml.tmpl`, add under `[tools]` (outside the `workstation` block so `fnox`, `uv`, `yq`, and `rbw` are available on all profiles):
+   ```toml
+   "github:jdx/fnox" = "{{ .packages.fnox }}"
+   "aqua:astral-sh/uv" = "{{ .packages.uv }}"
+   "aqua:mikefarah/yq" = "{{ .packages.yq }}"
+   {{ if ne .chezmoi.os "windows" -}}
+   "github:doy/rbw" = "{{ .packages.rbw }}"
+   {{ else -}}
+   "aqua:bitwarden/clients" = "{{ .packages.bw }}"
+   {{ end -}}
+   ```
+3. In `.chezmoiscripts/run_onchange_after_install-packages.sh.tmpl`, add `pinentry-curses` to the `apt-get install` package list so `rbw unlock` always has a pinentry helper on Linux/WSL.
+4. Unify `dot_config/private_agent-secrets.env.tmpl` on `rbw` (Linux/WSL) and `bw` (Windows):
+   ```gotmpl
+   # Agent API secrets. Sourced by ~/.config/agent-env.sh.
+   # Managed by chezmoi. Local overrides go in ~/.config/agent-env.local.sh.
+
+   {{- if eq .profile "workstation" }}
+   {{-   if eq .chezmoi.os "windows" }}
+   {{-     if and (lookPath "bw") (env "BW_SESSION") }}
+   {{-       range $k, $v := (bitwardenFields "item" "ai-agent-keys") }}
+   export {{ $k }}={{ $v.value | quote }}
+   {{-       end }}
+   {{-     end }}
+   {{-   else if and (lookPath "rbw") (eq (output "sh" "-c" "rbw unlocked >/dev/null 2>&1 && echo 1 || true" | trim) "1") }}
+   {{-     range $k, $v := (rbwFields "ai-agent-keys") }}
+   export {{ $k }}={{ $v.value | quote }}
+   {{-     end }}
+   {{-   end }}
+   {{- end }}
+   ```
+5. Locked-vault fix in `.chezmoiignore`: append at the bottom of `.chezmoiignore` so an apply with a locked vault leaves `~/.config/agent-secrets.env` untouched:
+   ```gotmpl
+   {{- $vaultUnlocked := false -}}
+   {{- if eq .chezmoi.os "windows" -}}
+   {{-   $vaultUnlocked = and (ne (lookPath "bw") "") (ne (env "BW_SESSION") "") -}}
+   {{- else if ne (lookPath "rbw") "" -}}
+   {{-   $vaultUnlocked = eq (output "sh" "-c" "rbw unlocked >/dev/null 2>&1 && echo 1 || true" | trim) "1" -}}
+   {{- end -}}
+   {{- if not (and (eq .profile "workstation") $vaultUnlocked) }}
+   .config/agent-secrets.env
+   {{- end }}
+   ```
+6. In `dot_justfile` (`doctor` recipe), add a `--- Secrets ---` section that prints `fnox --version` (if installed), `rbw unlocked` status (`unlocked` / `locked`), and runs `fnox doctor` when `./fnox.toml` exists in the current directory.
+7. Write `docs/adr/0005-fnox-rbw-secrets.md` (context: bws free-tier limits; decision: fnox + Bitwarden PM via `github:doy/rbw` on Linux/WSL and `bw` on Windows; folder/item/field convention; consequences: no secrets in git, network needed, `provider = "vault"` on each secret entry) and `docs/explanation/security-model.md` (global `agent-secrets.env` vs per-project `fnox exec`, locked-vault protection, and sandbox isolation).
+8. In `scripts/ci-check.sh`, add `'github:jdx/fnox'`, `'aqua:astral-sh/uv'`, and `'aqua:mikefarah/yq'` to the `for mise_tool in ...` loop checking `rendered_mise_config`.
+**Verification:** `just test-fast`. Interactive workstation smoke test (run by user after `just apply`): `rbw config set email <email> && rbw login && rbw unlock`.
 **Out of scope:** moving global agent keys to fnox; the template repos.
 
 ### WP2: Template recipes in dotfiles (mydotfiles)
-**Task:** copier tooling plus the `new`, `adopt`, `sync-template` and `dev-clone` global recipes. Assumption: WP3 has published `copier-base` v0.1.0 (develop against local paths first).
-**Files:** `.chezmoidata.toml` (`[templates]` table + `copier` pin), `dot_config/mise/config.toml.tmpl` (copier, workstation only), `dot_justfile`, `docs/how-to/start-a-project.md` (new)
+**Branch:** `feat/template-recipes`
+**Task:** add `copier` pin + `[templates]` data, plus `new`, `adopt`, `sync-template` and `dev-clone` global recipes in `dot_justfile`. (Can be developed and tested against local template paths or after WP3/WP4 publish `v0.1.0`.)
+**Files:** `.chezmoidata.toml`, `dot_config/mise/config.toml.tmpl`, `dot_justfile`, `scripts/ci-check.sh`, `docs/how-to/start-a-project.md` (new)
 **Steps:**
-1. `.chezmoidata.toml`: add `[templates] base = "gh:AmazingHorse/copier-base"`, `infra_ops = "gh:AmazingHorse/copier-infra-ops"`, and `dev_root = "projects/templates"`. Add the `copier` pin. mise: `"pipx:copier" = "{{ .packages.copier }}"` inside `{{ if eq .profile "workstation" }}`. Check: rendered config contains copier on the workstation, not on server (`--promptChoice profile=server`).
-2. `dot_justfile` `new dir archetype="" company=""`:
-   - Refuse if `dir` exists and is non-empty.
-   - `git init`.
-   - `copier copy --trust -a .copier-answers.base.yml <base> <dir>`, passing `-d secrets_folder=… -d bw_profile=…` from `~/.config/mydotfiles/companies.toml` when `company` is set (read with `yq -p toml`).
-   - Commit.
-   - If `archetype` is set: `copier copy -a .copier-answers.<archetype>.yml <url> <dir>` and commit.
-   - If `company` is set: apply the overlay URL from `companies.toml` and commit.
-   - Run `just setup && just check` in the new repo.
-   
-   Check: `just -g new /tmp/demo` renders, and `just check` passes there.
-3. `adopt archetype="" company=""` (run inside an existing repo): require a clean worktree on a non-main branch (reuse the `git-guard` logic), then the same copier calls with `--overwrite` **off**, so copier prompts per conflict. Print `git status` at the end. Check: dry run on a scratch clone.
-4. `sync-template`: for each `.copier-answers*.yml` in the repo root, run `copier update -a <file> --skip-answered` (verify the flag name), stopping on conflicts. Check: run it in `/tmp/demo` after bumping the template tag.
-5. `dev-clone`: for each `[templates]` URL, clone into `~/<dev_root>/<name>` if missing. Never pull. Check: run twice; the second run is a no-op.
-6. Write `docs/how-to/start-a-project.md` (new, adopt, sync, company overlay setup, the vault folder/item convention).
-**Verification:** `just test-fast`; manual `just -g new /tmp/demo --archetype infra-ops`.
-**Out of scope:** template content.
+1. In `.chezmoidata.toml`:
+   - Under `[packages]`, add:
+     ```toml
+     # renovate: datasource=pypi depName=copier
+     copier = "9.19.1"
+     ```
+   - Add a `[templates]` table at the bottom:
+     ```toml
+     [templates]
+     base = "gh:AmazingHorse/copier-base"
+     infra_ops = "gh:AmazingHorse/copier-infra-ops"
+     dev_root = "projects/templates"
+     ```
+2. In `dot_config/mise/config.toml.tmpl`, inside `{{ if eq .profile "workstation" -}}`, add:
+   ```toml
+   "pipx:copier" = "{{ .packages.copier }}"
+   ```
+   Add `'pipx:copier'` to the workstation check and a negative `grep -q "pipx:copier" "${server_mise_config}"` check in `scripts/ci-check.sh`.
+3. In `dot_justfile`, add the four template recipes using `just 1.58`'s `[arg(..., long=...)]` attribute:
+   - `new`:
+     ```just
+     [no-cd]
+     [arg("archetype", long="archetype")]
+     [arg("company", long="company")]
+     new dir archetype="" company="":
+     ```
+     - Refuse if `dir` exists and is non-empty (`[[ -d "$1" ]] && [[ -n "$(ls -A "$1" 2>/dev/null)" ]]`).
+     - `mkdir -p "$dir" && git -C "$dir" init`.
+     - Resolve base template URL (`${COPIER_BASE_URL:-gh:AmazingHorse/copier-base}`). When `company` is non-empty, read `secrets_folder` and `bw_profile` from `~/.config/mydotfiles/companies.toml` via `yq -p toml -oy ".${company}.secrets_folder"` / `.bw_profile` and pass `-d secrets_folder=... -d bw_profile=...`.
+     - Run `copier copy --trust -a .copier-answers.base.yml <base_url> "$dir"` and `git -C "$dir" add -A && git -C "$dir" commit -m "chore: initial copier-base scaffold"`.
+     - If `archetype` is non-empty: map `infra-ops` → `gh:AmazingHorse/copier-infra-ops` (or `COPIER_ARCHETYPE_URL` override), run `copier copy --trust -a ".copier-answers.${archetype}.yml" <arch_url> "$dir"`, and commit (`chore: apply <archetype> archetype`).
+     - If `company` is non-empty and `.${company}.overlay_url` exists in `companies.toml`: run `copier copy --trust -a ".copier-answers.${company}.yml" <overlay_url> "$dir"` and commit.
+     - Run `(cd "$dir" && just setup && just check)`.
+   - `adopt`:
+     ```just
+     [no-cd]
+     [arg("archetype", long="archetype")]
+     [arg("company", long="company")]
+     adopt archetype="" company="":
+     ```
+     - Require a clean worktree on a non-`main`/`master` branch (`just --justfile {{quote(justfile())}} git-guard`).
+     - Run `copier copy --trust -a .copier-answers.base.yml <base_url> .` (without `--overwrite`, so copier prompts on conflicts), plus the archetype and company layers if specified. Print `git status -sb` at the end.
+   - `sync-template`:
+     - Require clean worktree (`git status --porcelain` empty).
+     - Loop over `.copier-answers*.yml` in `.`: run `copier update --trust -a "$f" --skip-answered`.
+   - `dev-clone`:
+     - Clone `https://github.com/AmazingHorse/copier-base.git` and `https://github.com/AmazingHorse/copier-infra-ops.git` into `~/projects/templates/<name>` if missing; skip if directory already exists.
+4. Write `docs/how-to/start-a-project.md` covering `new`, `adopt`, `sync-template`, `dev-clone`, `~/.config/mydotfiles/companies.toml` schema, and the Bitwarden `folder`/`item`/`field` layout.
+**Verification:** `just test-fast`.
+**Out of scope:** template repository contents (WP3, WP4).
 
 ### WP3: `copier-base` v0.1.0 (new repo `~/projects/templates/copier-base`)
-**Task:** build the underlay template exactly as in "File ownership" and "Key file contents". Assumption: Verify-first items 3, 5, 6 and 7 are done; the repo is public on GitHub under `AmazingHorse`.
-**Files:** `copier.yml`, `README.md`, `template/**` (every base-owned and seeded file in the ownership table), `tests/render.sh`, `.github/workflows/ci.yml`, `justfile`, `mise.toml`, `LICENSE`
+**Branch:** `main` (initial repo creation + `v0.1.0` tag)
+**Task:** build the underlay template repository and publish `AmazingHorse/copier-base` `v0.1.0`.
+**Files:** `copier.yml`, `README.md`, `LICENSE`, `justfile`, `mise.toml`, `.github/workflows/ci.yml`, `tests/render.sh`, and `template/**`:
+- `template/{{ _copier_conf.answers_file }}.jinja`
+- `template/justfile.jinja`
+- `template/.config/just/base.just`
+- `template/mise.toml`
+- `template/.config/fnox/provider.toml.jinja`
+- `template/fnox.toml.jinja`
+- `template/AGENTS.md.jinja`
+- `template/CLAUDE.md` (symlink to `AGENTS.md`)
+- `template/.agents/project.md.jinja`
+- `template/.agents/sandbox.toml.jinja`
+- `template/.omp/permissions.json`
+- `template/.pre-commit-config.yaml`
+- `template/.github/workflows/ci.yml.jinja` (or conditional `{% if ci %}.github{% endif %}/workflows/ci.yml`)
+- `template/.github/pull_request_template.md`
+- `template/.gitignore`
+- `template/.editorconfig`
+- `template/CONTRIBUTING.md`
+- `template/README.md.jinja`
+- `template/docs/adr/0000-template.md`
+- `template/docs/debt.md`
 **Steps:**
-1. `copier.yml`: `_subdirectory: template`, `_answers_file: .copier-answers.base.yml`, `_min_copier_version` (the pinned version), `_skip_if_exists: [fnox.toml, project.just, README.md, .agents/project.md, .agents/sandbox.toml, .omp/permissions.json]`, the questions listed above, and `_tasks: ["git add -A"]` only if useful (otherwise none). Check: `copier copy --defaults . /tmp/b1` succeeds.
-2. Author the `template/` files. Each `.jinja` file uses only the answers above. `CLAUDE.md` is a symlink to `AGENTS.md` (verify copier preserves symlinks; otherwise render a one-line `See AGENTS.md`). Check: `tree -a /tmp/b1`.
-3. `tests/render.sh`: render into a tmpdir with `--defaults` and with `-d bw_backend=bw -d secrets_folder=acme -d bw_profile=acme`, then run `just check` in each render (run `mise install` first). Check: `bash tests/render.sh`.
-4. Template repo CI: `jdx/mise-action` + `bash tests/render.sh`, actions pinned by SHA.
-5. Tag `v0.1.0` after CI is green.
-**Verification:** `bash tests/render.sh`; rendered `AGENTS.md` ≤ 40 lines (`wc -l`).
+1. Author `copier.yml` with these exact settings:
+   ```yaml
+   _subdirectory: template
+   _answers_file: .copier-answers.base.yml
+   _min_copier_version: "9.19.1"
+   _preserve_symlinks: true
+   _skip_if_exists:
+     - fnox.toml
+     - project.just
+     - README.md
+     - .agents/project.md
+     - .agents/sandbox.toml
+     - .omp/permissions.json
+   ```
+   plus the questions: `project_name` (`str`), `project_slug` (`str`, default `{{ project_name | lower | replace(' ', '-') }}`, validator `^[a-z][a-z0-9-]+$`), `description` (`str`), `owner` (`str`, default `AmazingHorse`), `license` (`str`, choices `[MIT, none]`, default `MIT`), `secrets_folder` (`str`, default `proj`), `bw_profile` (`str`, default `""`), `bw_backend` (`str`, choices `[rbw, bw]`, default `rbw`), `ci` (`bool`, default `true`).
+2. Author `template/**` using the exact skeletons in "Key file contents" above (including `template/{{ _copier_conf.answers_file }}.jinja` and `template/.config/just/base.just`). Ensure `template/CLAUDE.md` is a relative symlink `AGENTS.md`.
+3. Write `tests/render.sh`:
+   - Creates a temporary git tag `v0.0.0-test` if no tag exists yet.
+   - Renders into `/tmp/test-render-default` with `copier copy --defaults -d project_name=demo-app -d description="Demo" . /tmp/test-render-default` and verifies:
+     - `.copier-answers.base.yml` exists
+     - `CLAUDE.md` is a symlink (`[[ -L /tmp/test-render-default/CLAUDE.md ]]`)
+     - `wc -l < /tmp/test-render-default/AGENTS.md` is `<= 40`
+     - `(cd /tmp/test-render-default && git init && git add -A && just check)` succeeds
+   - Renders into `/tmp/test-render-company` with `-d bw_backend=bw -d secrets_folder=acme -d bw_profile=acme` and verifies `.config/fnox/provider.toml` contains `backend = "bw"` and `profile = "acme"` and does not contain `auth_command`.
+   - Tests `_skip_if_exists`: appends a line to `/tmp/test-render-default/fnox.toml`, commits, runs `copier copy --defaults --overwrite . /tmp/test-render-default`, and asserts the custom line in `fnox.toml` is preserved.
+4. Configure `.github/workflows/ci.yml` (`jdx/mise-action` + `bash tests/render.sh`, actions pinned by commit SHA). Push to `AmazingHorse/copier-base` and tag `v0.1.0`.
+**Verification:** `bash tests/render.sh` exits 0.
 **Out of scope:** archetype files; language toolchains.
 
 ### WP4: `copier-infra-ops` v0.1.0 (new repo `~/projects/templates/copier-infra-ops`)
-**Task:** build the infra-ops archetype layer. Assumption: `copier-base` v0.1.0 exists.
-**Files:** `copier.yml`, `template/archetype.just`, `template/.config/mise/conf.d/infra-ops.toml`, `template/.agents/archetype.md`, `template/.agents/skills/infra-ops-runbook/SKILL.md`, `template/.agents/skills/infra-ops-add-secret/SKILL.md`, `template/{% if 'ansible' in iac %}ansible{% endif %}/{.gitignore,ansible.cfg,requirements.yml}`, `template/{% if 'opentofu' in iac %}opentofu{% endif %}/.gitignore`, `template/docs/runbooks/README.md`, `tests/render.sh`, CI
+**Branch:** `main` (initial repo creation + `v0.1.0` tag)
+**Task:** build the `infra-ops` archetype template repository and publish `AmazingHorse/copier-infra-ops` `v0.1.0`.
+**Files:** `copier.yml`, `README.md`, `LICENSE`, `justfile`, `mise.toml`, `.github/workflows/ci.yml`, `tests/render.sh`, and `template/**`:
+- `template/{{ _copier_conf.answers_file }}.jinja`
+- `template/archetype.just.jinja`
+- `template/.config/mise/conf.d/infra-ops.toml.jinja`
+- `template/.agents/archetype.md.jinja`
+- `template/.agents/skills/infra-ops-runbook/SKILL.md`
+- `template/.agents/skills/infra-ops-add-secret/SKILL.md`
+- `template/{% if 'ansible' in iac %}ansible{% endif %}/.gitignore`
+- `template/{% if 'ansible' in iac %}ansible{% endif %}/ansible.cfg`
+- `template/{% if 'ansible' in iac %}ansible{% endif %}/requirements.yml`
+- `template/{% if 'opentofu' in iac %}opentofu{% endif %}/.gitignore`
+- `template/docs/runbooks/README.md`
 **Steps:**
-1. `archetype.just`: override `lint` (pre-commit + `yamllint .` + `ansible-lint` if ansible), `test` (`ansible-playbook --syntax-check` over `ansible/playbooks/*.yml` if ansible; `tofu fmt -check && tofu validate` if opentofu). Add `plan` (dry runs: `ansible-playbook --check --diff`, `tofu plan`) wrapped in `fnox exec --`. Check: renders on top of base, and `just --list` shows the overrides.
-2. `ansible.cfg`: `host_key_checking = True`, `callback_result_format = yaml`, `collections_path = ./.ansible/collections`, `inventory = inventory/`, `retry_files_enabled = False`. `requirements.yml` is empty but present.
-3. `.agents/archetype.md`: manifest-driven state; idempotency; a runbook per operation; never apply without a dry run; live targets `{{ live_targets }}` need user approval.
-4. Skills:
-   - `infra-ops-runbook`: how to write a runbook.
-   - `infra-ops-add-secret`: add a field to Bitwarden item `<slug>` in folder `<folder>`, add a ref to `fnox.toml`, `lookup('env', …)` in Ansible, and never echo the value.
-5. `tests/render.sh`: render base and then infra-ops with each `iac` combination, then `just check`. Then tag `v0.1.0`.
-**Verification:** `bash tests/render.sh`.
-**Out of scope:** Proxmox-specific roles (those stay in the project).
+1. Author `copier.yml`:
+   ```yaml
+   _subdirectory: template
+   _answers_file: .copier-answers.infra-ops.yml
+   _min_copier_version: "9.19.1"
+
+   iac:
+     type: yaml
+     help: Which IaC tools does this repository use?
+     multiselect: true
+     choices:
+       - ansible
+       - opentofu
+     default:
+       - ansible
+
+   live_targets:
+     type: str
+     help: Live target CIDR(s) requiring explicit user approval before apply/smoke
+     default: "192.168.50.0/24"
+   ```
+2. Author `template/.config/mise/conf.d/infra-ops.toml.jinja` using exact verified mise registry identifiers and ≥7-day-old versions:
+   ```toml
+   [tools]
+   "aqua:astral-sh/uv" = "0.13.5"
+   "pipx:yamllint" = "1.38.0"
+   {% if 'ansible' in iac -%}
+   "pipx:ansible-core" = "2.21.5"
+   "pipx:ansible-lint" = "26.10.1"
+   {% endif -%}
+   {% if 'opentofu' in iac -%}
+   "aqua:opentofu/opentofu" = "1.13.2"
+   {% endif -%}
+   ```
+   *(Note: `"aqua:astral-sh/uv"` is included so GitHub Actions CI runners using `jdx/mise-action` can install the `pipx:*` tools without needing a separate global `uv` install step.)*
+3. Author `template/archetype.just.jinja`:
+   - Overrides `lint` (`pre-commit run --all-files`, `yamllint .`, plus `ansible-lint` when `ansible` in `iac` and playbooks exist).
+   - Overrides `test` (`ansible-playbook --syntax-check` over `ansible/playbooks/*.yml` if present; `tofu -chdir=opentofu fmt -check && tofu -chdir=opentofu validate` when `opentofu` in `iac` and `.tf` files exist).
+   - Adds `plan` (dry-run `fnox exec -- ansible-playbook --check --diff ...` / `fnox exec -- tofu -chdir=opentofu plan`).
+4. Author `ansible.cfg`: `host_key_checking = True`, `callback_result_format = yaml`, `collections_path = ./.ansible/collections`, `inventory = inventory/`, `retry_files_enabled = False`.
+5. Author `.agents/archetype.md.jinja` and the two skills (`infra-ops-runbook` and `infra-ops-add-secret`, noting `{ provider = "vault", value = "<slug>/<FIELD>" }` in `fnox.toml`).
+6. Write `tests/render.sh`: renders `copier-base` into a tmpdir, then layers `copier-infra-ops` on top for `iac=[ansible]`, `iac=[opentofu]`, and `iac=[ansible, opentofu]`, verifying `just --list` and `just check` pass in each. Push and tag `v0.1.0`.
+**Verification:** `bash tests/render.sh` exits 0.
+**Out of scope:** Proxmox-specific roles (those stay in `thinkcenter-cluster`).
 
 ### WP5: Adopt into `thinkcenter-cluster` (branch `chore/adopt-templates`)
-**Task:** apply base + infra-ops via `just -g adopt infra-ops`, then migrate the project onto the new conventions per the "Audit" table. Assumption: WP1–WP4 are done. The user runs anything that touches live systems.
+**Task:** apply `copier-base` + `copier-infra-ops` via `just -g adopt --archetype infra-ops`, then migrate the project onto the new conventions per the "Audit" table. Assumption: WP1–WP4 are done. The user runs anything that touches live systems.
 **Files:** generated template files plus `ansible/ansible.cfg`, `ansible/playbooks/*.yml` (env lookups), `.github/workflows/{lint,sops-check}.yml` (delete), `.sops.yaml` and `ansible/secrets/` (delete), `.agents/AGENTS.md` → `.agents/project.md` + `docs/adr/*` + `docs/investigations/pxe-uefi.md`, `justfile` → `project.just`, `fetch_assets_justfile_plan.md` → `plans/`, `fnox.toml`, `.omp/permissions.json`
 **Steps:**
-1. Run `just -g adopt infra-ops` and resolve conflicts. The existing `justfile` recipes move to `project.just`, and `test` is renamed `smoke-boot`. Check: `just --list` shows both the standard verbs and the project verbs.
-2. Secrets: create Bitwarden folder `proj`, item `thinkcenter-cluster`, fields `PROXMOX_ROOT_PASSWORD`, `PROXMOX_API_TOKEN_ID`, `PROXMOX_API_TOKEN_SECRET` (the user does this in Bitwarden). Add the refs to `fnox.toml`. Replace vault vars in playbooks/group_vars with `lookup('env', …)`. Wrap `site`/`bootstrap` in `fnox exec --`. Delete the sops files. Check: `fnox check` (names resolve); `rg -n 'sops' .` is empty outside docs/adr.
-3. Split AGENTS: decision table → ADRs (one per row, short); PXE scratchpad → `docs/investigations/pxe-uefi.md`; the rest → `.agents/project.md` (file map corrected to nginx). Check: `wc -l AGENTS.md` ≤ 40.
-4. Project permissions: deny `just up`, `just site`, `just bootstrap`, `docker compose`. Allow `just check`, `just plan`. Check: `bun test` is not applicable here; review manually.
-5. `ansible.cfg` hardening: `known_hosts` generated from `cluster-manifest.yml` by `00-generate-boot-config.yml`. Check: `just check` is green.
-**Verification:** `just check` (green on CI too); `just doctor`. The user runs `just plan` against live nodes.
+1. In `thinkcenter-cluster` worktree (`just -g worktree-new chore/adopt-templates`), move existing `justfile` recipes to `project.just` (renaming `test` to `smoke-boot`), then run `just -g adopt --archetype infra-ops`. Check: `just --list` shows both the standard verbs and the project verbs, and `just check` calls `archetype.just`'s `lint` and `test`.
+2. Secrets: create Bitwarden folder `proj`, item `thinkcenter-cluster`, fields `PROXMOX_ROOT_PASSWORD`, `PROXMOX_API_TOKEN_ID`, `PROXMOX_API_TOKEN_SECRET` (the user does this in Bitwarden). Add the refs to `fnox.toml` with `provider = "vault"`:
+   ```toml
+   PROXMOX_ROOT_PASSWORD = { provider = "vault", value = "thinkcenter-cluster/PROXMOX_ROOT_PASSWORD" }
+   PROXMOX_API_TOKEN_ID = { provider = "vault", value = "thinkcenter-cluster/PROXMOX_API_TOKEN_ID" }
+   PROXMOX_API_TOKEN_SECRET = { provider = "vault", value = "thinkcenter-cluster/PROXMOX_API_TOKEN_SECRET" }
+   ```
+   Replace vault vars in playbooks/group_vars with `lookup('env', …)`. Wrap `site`/`bootstrap` in `fnox exec --`. Delete `.sops.yaml`, `ansible/secrets/`, and `.github/workflows/{lint,sops-check}.yml`. Check: `rg -n 'sops' .` is empty outside `docs/adr/`.
+3. Split `.agents/AGENTS.md`: decision table → `docs/adr/0001-0010` (one per row, short); PXE scratchpad → `docs/investigations/pxe-uefi.md`; the rest → `.agents/project.md` (file map corrected to nginx). Delete `.agents/AGENTS.md`. Check: `wc -l < AGENTS.md` ≤ 40.
+4. Project permissions (`.omp/permissions.json`): deny `just up*`, `just site*`, `just bootstrap*`, `docker compose*`. Allow `just check`, `just lint`, `just test`. Ask `just plan*`, `just smoke*`.
+5. `ansible.cfg` hardening: `host_key_checking = True` with `known_hosts` generated from `cluster-manifest.yml` by `00-generate-boot-config.yml`. Move `fetch_assets_justfile_plan.md` to `plans/`. Rename `terraform/` stub to `opentofu/`.
+**Verification:** `just check` (green locally and on GitHub-hosted CI); `just doctor`. The user runs `fnox check` and `just plan` against live nodes.
 **Out of scope:** PXE/UEFI fixes; Ceph/Corosync changes.
 
 ### WP6: Follow-ups (not MVP)

@@ -7,7 +7,7 @@ Scope: full read of the repo at `6d618eb`, plus your active GitHub repos (`vectr
 | Topic | Decision |
 |---|---|
 | AI tools to render rules/skills/MCP for | omp, agy, Claude Code, Devin (Devin has `.devin/` rules plus AGENTS.md support, so keep the stubs as a real target, not dead code) |
-| Secrets | Bitwarden: chezmoi `bitwarden`/`bitwardenFields` template functions (or `rbw` for an unattended agent), rendered into a `private_` agent-env file |
+| Secrets | Global agent keys: chezmoi `rbwFields` on Linux/WSL (`bitwardenFields` on Windows) into `private_agent-secrets.env` (until WP6 migrates global keys to fnox). Per-project secrets: `fnox` + Bitwarden PM (`rbw` on Linux/WSL, `bw` on Windows) — see [part8-secrets-and-templates.md](part8-secrets-and-templates.md) |
 | mise migration | Incremental, one tool per PR, CI green on each |
 | Execution | Advisory now; implement later on a separate worktree branch |
 | OS targets / other environments | Unanswered. Assuming the current Ubuntu/Debian + WSL + Windows, and treating server/ephemeral profiles as recommended but optional |
@@ -113,7 +113,7 @@ Do the same for **skills**: keep them in one directory (for example `~/.agents/s
 
 |---|---|---|
 | core | `gh`, `jq`, `yq`, `uv`, `shfmt`, `direnv` (or mise `[env]`) | `uv` replaces pip/pipx/venv; `yq` for every YAML you'll touch |
-| infra | `opentofu`, `ansible` (via `uv tool`), `kubectl`, `helm`, `k9s`, `sops`, `age` | `thinkcenter-cluster` → bpg/proxmox provider + ansible is the standard PVE path |
+| infra | `opentofu`, `kubectl`, `helm`, `k9s` (`sops`/`age` legacy only; new infra repos use `copier-infra-ops` `.config/mise/conf.d/infra-ops.toml` + `fnox`, see [part8](part8-secrets-and-templates.md)) | `thinkcenter-cluster` → bpg/proxmox provider + ansible + fnox |
 | containers | `podman` or docker CLI, `dive`, `hadolint` | |
 | rust | `rust` via mise (rustup) | `StatcanLM` |
 | embedded | keep per-project (`flipper` mise.toml + ufbt), as you do now ✅ | Correct call; don't globalize toolchains |
@@ -151,7 +151,7 @@ Do the same for **skills**: keep them in one directory (for example `~/.agents/s
 
 Your plan → spec → worktree → verify loop (`just -g plan`, `run-omp`, `git-guard`, `worktree-new`) is the right shape. To make it work across every tool:
 
-1. **Every project gets a committed `AGENTS.md`** with build, test, and lint commands, layout, and gotchas. This file affects agent output quality more than anything else. Change `just -g seed` to generate an `AGENTS.md` skeleton. Keep `.agent-profile.md` for *personal* preferences only.
+1. **Every project gets a committed `AGENTS.md`** with build, test, and lint commands, layout, and gotchas. This file affects agent output quality more than anything else. Generated and updated via `copier-base` (`just -g new` / `just -g adopt`; see [part8-secrets-and-templates.md](part8-secrets-and-templates.md)). Keep `.agent-profile.md` for *personal* preferences only.
 2. **Use `just check` in every repo.** The global contract can then say "run `just check` before reporting done" without knowing the language. You already do this here.
 3. **Pre-commit hooks** (shellcheck, shfmt, ruff, prettier, gitleaks) give agents fast, deterministic feedback and catch issues before CI.
 4. **Sandbox tiers:** your own repo → native. Unfamiliar repo → `omp-sandbox` (bwrap, nice). Untrusted repo → devcontainer, which the `ephemeral` profile enables.
@@ -201,7 +201,7 @@ docs/
 7. **Optional:** a root `llms.txt` (an emerging convention) that indexes `docs/` for tools that fetch repos over the web.
 
 ### Making it reusable as a template
-Put the skeleton under `dot_omp/seeds/docs-skeleton/` and add a `just -g docs-init` recipe that copies AGENTS.md, CONTRIBUTING.md, the PR template, `docs/{tutorials,how-to,reference,explanation,adr}/` and an ADR template into any repo. `vectra`, `thinkcenter-cluster` and `flipper` would then share one structure that both you and every agent know.
+Superseded by `copier-base` ([part8-secrets-and-templates.md](part8-secrets-and-templates.md)): `just -g new` and `just -g adopt` seed and update `AGENTS.md`, `CLAUDE.md` (symlink), `CONTRIBUTING.md`, the PR template, `docs/adr/0000-template.md`, and `docs/debt.md` across all projects.
 
 ---
 
@@ -245,23 +245,23 @@ Items above that are still open, or that were marked done but only partly shippe
 - [x] Remove the duplicated config data. `.chezmoi.toml.tmpl` writes toolset_* and [data.toolsets], and .chezmoidata.toml also defines profile / [toolsets]. Pick one source.
 
 ### #7 Toolsets
-- [ ] Core: `gh`, `yq`, `uv`, `shfmt` (`direnv` only if mise `[env]` falls short).
-- [ ] Infra: `ansible` via `uv tool`.
+- [ ] Core: `uv` and `yq` ship in [part8](part8-secrets-and-templates.md) WP1/WP2 (`uv` is required by mise for `pipx:*` tools like `copier`; `yq` reads `companies.toml`). Remaining: `gh`, `shfmt` (`direnv` only if mise `[env]` falls short).
+- [x] Infra: per-project `ansible-core`, `ansible-lint`, `yamllint`, and `opentofu` moved to the `copier-infra-ops` archetype (`.config/mise/conf.d/infra-ops.toml`, see [part8](part8-secrets-and-templates.md) WP4) instead of globalizing `ansible`.
 - [ ] Containers: `podman` (or the docker CLI) and `dive`.
 
-### #8 Secrets
-- [ ] Install `bw` (or `rbw`) via mise. The template calls `lookPath "bw"`, but nothing installs it.
-- [ ] Locked vault wipes the secrets file. With `BW_SESSION` unset, the template still renders its header, so `chezmoi apply` overwrites `~/.config/agent-secrets.env` with comments only. Fix it with a `.chezmoiignore` gate or by keeping the existing contents.
-- [ ] `docs/explanation/security-model.md`.
+### #8 Secrets (tracked in [part8-secrets-and-templates.md](part8-secrets-and-templates.md) WP1)
+- [ ] Install `fnox` (`github:jdx/fnox`), `rbw` on Linux/WSL (`github:doy/rbw` via mise + `pinentry-curses` via apt), and `bw` on Windows (`aqua:bitwarden/clients` via mise). Switch `private_agent-secrets.env.tmpl` to use `rbwFields` on Linux/WSL and `bitwardenFields` on Windows.
+- [ ] Fix the locked-vault wipe: gate `.config/agent-secrets.env` in `.chezmoiignore` on `rbw unlocked` (Linux/WSL) or `BW_SESSION` (Windows) so `chezmoi apply` with a locked vault leaves the existing file untouched.
+- [ ] Write `docs/adr/0005-fnox-rbw-secrets.md` and `docs/explanation/security-model.md`.
 
 ### AI SDLC
-- [ ] `just -g seed` generates a committed `AGENTS.md` skeleton. This is superseded by the copier scaffold in part5 Phase 8.
+- [ ] Committed `AGENTS.md` + layered `.agents/{archetype,project}.md` scaffold via `copier-base` and `just -g new` / `just -g adopt` (supersedes `just -g seed`; see [part8-secrets-and-templates.md](part8-secrets-and-templates.md) WP2–WP4).
 - [ ] Pre-commit hooks: add `shellcheck` and `shfmt`. Today only generic hooks and betterleaks run.
 - [ ] Permission trust gate (`~/.omp/agent/trusted-repos`, `trustedAllow` tier). Not implemented. The old `bootstrap-guard.ts` header documented the threat model; that file is now `command-guard/` (part7).
 
 ### Docs
-- [ ] `docs/{tutorials,reference,explanation}/` (only `how-to/add-a-tool.md` exists).
+- [ ] `docs/{tutorials,reference,explanation}/` (`how-to/add-a-tool.md` exists; `how-to/start-a-project.md` and `explanation/security-model.md` land in [part8](part8-secrets-and-templates.md) WP1–WP2).
 - [ ] `just docs` → generated `reference/pins.md` and `reference/just-recipes.md`, with a CI freshness check.
 - [ ] `markdownlint` + `lychee` in CI.
-- [ ] `docs-skeleton` seed + `just -g docs-init`. Fold this into the copier template (part5 Phase 8).
+- [ ] Project docs skeleton (`AGENTS.md`, `CONTRIBUTING.md`, PR template, `docs/adr/0000-template.md`, `docs/debt.md`) folded into `copier-base` ([part8-secrets-and-templates.md](part8-secrets-and-templates.md) WP3; supersedes `docs-init`).
 - [ ] Optional: root `llms.txt`.
