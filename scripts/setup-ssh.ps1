@@ -60,27 +60,13 @@ function Install-PublicKeyOnHost {
         throw "Public key is empty: $KeyPath"
     }
 
-    $SshArgs = @()
-    if (-not [string]::IsNullOrWhiteSpace($Port)) {
-        $SshArgs += @('-p', $Port)
-    }
-
-    $SshCopyIdCommand = Get-Command ssh-copy-id -ErrorAction SilentlyContinue
-    if ($SshCopyIdCommand) {
-        & $SshCopyIdCommand.Source @SshArgs -i $KeyPath $TargetHost
-        if ($LASTEXITCODE -ne 0) {
-            throw "ssh-copy-id failed for $TargetHost"
-        }
-        return
-    }
-
-    # Portable fallback for hosts without ssh-copy-id (standard on Windows).
-    $RemoteCommand = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF '$PublicKeyContents' ~/.ssh/authorized_keys || printf '%s\n' '$PublicKeyContents' >> ~/.ssh/authorized_keys"
-
     $AllSshArgs = @()
     if (-not [string]::IsNullOrWhiteSpace($Port)) {
         $AllSshArgs += @('-p', $Port)
     }
+
+    # Ensure remote ~/.ssh exists with 700 and authorized_keys with 600, then append public key idempotently.
+    $RemoteCommand = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF '$PublicKeyContents' ~/.ssh/authorized_keys || printf '%s\n' '$PublicKeyContents' >> ~/.ssh/authorized_keys"
     $AllSshArgs += @($TargetHost, $RemoteCommand)
 
     & ssh @AllSshArgs
