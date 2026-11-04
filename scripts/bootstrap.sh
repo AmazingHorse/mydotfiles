@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_URL="${DOTFILES_REPO_URL:-https://github.com/AmazingHorse/mydotfiles.git}"
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIRECTORY}/.." && pwd)"
 RUN_SETUP_SSH=0
 # renovate: datasource=github-releases depName=twpayne/chezmoi
 DEFAULT_CHEZMOI_VERSION='2.71.1'
@@ -29,7 +30,7 @@ EOF
 done
 
 read_pinned_chezmoi_version() {
-    local data_file="${SCRIPT_DIRECTORY}/.chezmoidata.toml"
+    local data_file="${REPO_ROOT}/.chezmoidata.toml"
     if [ -f "${data_file}" ]; then
         awk -F'"' '/^chezmoi[[:space:]]*=/ { print $2; exit }' "${data_file}"
         return 0
@@ -295,18 +296,18 @@ sanitize_runtime_directory
 
 install_chezmoi
 
-if [ -f "$SCRIPT_DIRECTORY/dot_zshrc" ] && [ -f "$SCRIPT_DIRECTORY/.chezmoiignore" ]; then
-    echo "Using local checkout: $SCRIPT_DIRECTORY"
+if [ -f "$REPO_ROOT/dot_zshrc" ] && [ -f "$REPO_ROOT/.chezmoiignore" ]; then
+    echo "Using local checkout: $REPO_ROOT"
     # Bare `chezmoi apply` defaults to ~/.local/share/chezmoi. Point that at
     # this checkout so day-to-day commands work without --source every time.
     default_source_directory="${HOME}/.local/share/chezmoi"
     mkdir -p "$(dirname "${default_source_directory}")"
     if [ ! -e "${default_source_directory}" ]; then
-        ln -s "${SCRIPT_DIRECTORY}" "${default_source_directory}"
-        echo "Linked ${default_source_directory} -> ${SCRIPT_DIRECTORY}"
+        ln -s "${REPO_ROOT}" "${default_source_directory}"
+        echo "Linked ${default_source_directory} -> ${REPO_ROOT}"
     fi
-    chezmoi init --source="$SCRIPT_DIRECTORY"
-    chezmoi apply --source="$SCRIPT_DIRECTORY"
+    chezmoi init --source="$REPO_ROOT"
+    chezmoi apply --source="$REPO_ROOT"
 elif [ -d "$HOME/.local/share/chezmoi/.git" ]; then
     echo "Updating existing chezmoi source..."
     chezmoi update --init
@@ -318,8 +319,10 @@ fi
 if [ "$RUN_SETUP_SSH" -eq 1 ]; then
     if [ -f "$SCRIPT_DIRECTORY/setup-ssh.sh" ]; then
         bash "$SCRIPT_DIRECTORY/setup-ssh.sh"
-    elif [ -f "$HOME/.local/share/chezmoi/setup-ssh.sh" ]; then
-        bash "$HOME/.local/share/chezmoi/setup-ssh.sh"
+    elif [ -f "$REPO_ROOT/scripts/setup-ssh.sh" ]; then
+        bash "$REPO_ROOT/scripts/setup-ssh.sh"
+    elif [ -f "$HOME/.local/share/chezmoi/scripts/setup-ssh.sh" ]; then
+        bash "$HOME/.local/share/chezmoi/scripts/setup-ssh.sh"
     else
         echo "setup-ssh.sh not found." >&2
         exit 1

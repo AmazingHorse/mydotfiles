@@ -3,10 +3,6 @@
 .chezmoiignore
 LICENSE
 README.md
-bootstrap.ps1
-bootstrap.sh
-setup-ssh.ps1
-setup-ssh.sh
 justfile
 AGENTS.md
 CLAUDE.md
@@ -31,9 +27,13 @@ types/
 
 {{- if ne .chezmoi.os "windows" }}
 .local/bin/preferred-editor.cmd
+.local/bin/ssh-copy-id.cmd
+.local/bin/copy-ssh-id.cmd
+.local/bin/ssh-copy-id.ps1
 {{- end }}
 {{- if eq .chezmoi.os "windows" }}
 .local/bin/preferred-editor
+.local/bin/copy-ssh-id
 .justfile
 .config/agent-env.sh
 {{- end }}

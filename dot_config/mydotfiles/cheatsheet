@@ -52,7 +52,8 @@ Editor / pager
   PAGER     less -FRX when available
 
 SSH
-  setup-ssh [--gh] [--gl] [--copy host] [--identity path]
+  just setup-ssh [--gh] [--gl] [-i path] [host...]
+  copy-ssh-id | ssh-copy-id [-i path] host
 
 Bootstrap
-  ./bootstrap.sh | .\bootstrap.ps1   [--ssh|-Ssh] [-SkipWsl]
+  ./scripts/bootstrap.sh | .\scripts\bootstrap.ps1   [--ssh|-Ssh] [-SkipWsl]

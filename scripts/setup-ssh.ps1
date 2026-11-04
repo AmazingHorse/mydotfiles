@@ -1,9 +1,23 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
+    [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
+    [string[]]$Target = @(),
+
+    [Alias('i')]
     [string]$Identity = '',
+
+    [Alias('p')]
+    [string]$Port = '',
+
+    [Alias('t')]
+    [string]$Title = '',
+
     [switch]$Gh,
     [switch]$Gl,
+    [Alias('f')]
+    [switch]$Force,
+
     [string[]]$Copy = @()
 )
 
@@ -18,11 +32,16 @@ function Expand-IdentityPath {
         [string]$Path
     )
 
-    if ($Path.StartsWith('~/') -or $Path -eq '~') {
+    if ($Path -eq '~') {
+        return $HOME
+    }
+    if ($Path.StartsWith('~/') -or $Path.StartsWith('~\')) {
         return Join-Path $HOME $Path.Substring(2)
     }
-
-    return $Path
+    if (-not [System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
+    }
+    return [System.IO.Path]::GetFullPath($Path)
 }
 
 function Install-PublicKeyOnHost {
@@ -31,7 +50,9 @@ function Install-PublicKeyOnHost {
         [string]$TargetHost,
 
         [Parameter(Mandatory = $true)]
-        [string]$KeyPath
+        [string]$KeyPath,
+
+        [string]$Port = ''
     )
 
     $PublicKeyContents = (Get-Content -LiteralPath $KeyPath -Raw).Trim()
@@ -39,27 +60,32 @@ function Install-PublicKeyOnHost {
         throw "Public key is empty: $KeyPath"
     }
 
+    $SshArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($Port)) {
+        $SshArgs += @('-p', $Port)
+    }
+
     $SshCopyIdCommand = Get-Command ssh-copy-id -ErrorAction SilentlyContinue
     if ($SshCopyIdCommand) {
-        & $SshCopyIdCommand.Source -i $KeyPath $TargetHost
+        & $SshCopyIdCommand.Source @SshArgs -i $KeyPath $TargetHost
         if ($LASTEXITCODE -ne 0) {
             throw "ssh-copy-id failed for $TargetHost"
         }
         return
     }
 
-    # Portable fallback for hosts without ssh-copy-id (common on Windows).
-    $RemoteCommand = @(
-        'mkdir -p ~/.ssh'
-        'chmod 700 ~/.ssh'
-        'touch ~/.ssh/authorized_keys'
-        'chmod 600 ~/.ssh/authorized_keys'
-        "grep -qxF '$PublicKeyContents' ~/.ssh/authorized_keys || printf '%s\n' '$PublicKeyContents' >> ~/.ssh/authorized_keys"
-    ) -join ' && '
+    # Portable fallback for hosts without ssh-copy-id (standard on Windows).
+    $RemoteCommand = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF '$PublicKeyContents' ~/.ssh/authorized_keys || printf '%s\n' '$PublicKeyContents' >> ~/.ssh/authorized_keys"
 
-    & ssh $TargetHost $RemoteCommand
+    $AllSshArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($Port)) {
+        $AllSshArgs += @('-p', $Port)
+    }
+    $AllSshArgs += @($TargetHost, $RemoteCommand)
+
+    & ssh @AllSshArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "Portable key install failed for $TargetHost"
+        throw "Failed to install public key on host: $TargetHost"
     }
 }
 
@@ -85,22 +111,50 @@ $KeyParentDirectory = Split-Path -Parent $PrivateKeyPath
 
 New-Item -ItemType Directory -Force -Path $KeyParentDirectory | Out-Null
 
-if (-not (Test-Path -LiteralPath $PrivateKeyPath)) {
+if ($Force -and (Test-Path -LiteralPath $PrivateKeyPath)) {
+    $BackupTimestamp = Get-Date -Format 'yyyyMMddHHmmss'
+    $BackupPath = "$PrivateKeyPath.bak.$BackupTimestamp"
+    Write-Host "Backing up existing key to $BackupPath..."
+    Copy-Item -LiteralPath $PrivateKeyPath -Destination $BackupPath -Force
+    if (Test-Path -LiteralPath $PublicKeyPath) {
+        Copy-Item -LiteralPath $PublicKeyPath -Destination "$PublicKeyPath.bak.$BackupTimestamp" -Force
+        Remove-Item -LiteralPath $PublicKeyPath -Force
+    }
+    Remove-Item -LiteralPath $PrivateKeyPath -Force
+}
+
+if (Test-Path -LiteralPath $PrivateKeyPath) {
+    Write-Host "Using existing key: $PrivateKeyPath"
+    $TempErr = [System.IO.Path]::GetTempFileName()
+    $TestProc = Start-Process -FilePath 'ssh-keygen' -ArgumentList @('-y', '-P', '""', '-f', $PrivateKeyPath) -NoNewWindow -PassThru -Wait -RedirectStandardError $TempErr
+    if ($TestProc.ExitCode -ne 0) {
+        Write-Warning "$PrivateKeyPath is encrypted with a passphrase. To regenerate without a passphrase, re-run with: -Force (or -f)"
+    }
+    Remove-Item -LiteralPath $TempErr -Force -ErrorAction SilentlyContinue
+} elseif (Test-Path -LiteralPath $PublicKeyPath) {
+    Write-Host "Public key exists but private key missing: $PublicKeyPath"
+    Write-Host "To regenerate, re-run with: -Force (or -f)"
+    throw "Public key exists without private key."
+} else {
     $KeyComment = '{0}@{1}' -f $env:USERNAME, $env:COMPUTERNAME
     if ($KeyBasename -ne 'id_ed25519') {
         $KeyComment = '{0}-{1}' -f $KeyComment, $KeyBasename
     }
-    & ssh-keygen -t ed25519 -a 100 -f $PrivateKeyPath -C $KeyComment -N '""'
-    Write-Host "Created $PrivateKeyPath"
-} else {
-    Write-Host "Key already exists: $PrivateKeyPath"
+    $EmptyPassphrase = ''
+    & ssh-keygen -t ed25519 -a 100 -f $PrivateKeyPath -C $KeyComment -N $EmptyPassphrase
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to generate SSH key: $PrivateKeyPath"
+    }
+    Write-Host "Created new key (no passphrase): $PrivateKeyPath"
 }
 
 Write-Host "Public key: $PublicKeyPath"
 Get-Content -LiteralPath $PublicKeyPath | Write-Host
 
 $DateLabel = Get-Date -Format 'yyyyMMdd'
-if ($KeyBasename -eq 'id_ed25519') {
+if (-not [string]::IsNullOrWhiteSpace($Title)) {
+    $KeyTitle = $Title
+} elseif ($KeyBasename -eq 'id_ed25519') {
     $KeyTitle = '{0}-{1}' -f $env:COMPUTERNAME, $DateLabel
 } else {
     $KeyTitle = '{0}-{1}-{2}' -f $env:COMPUTERNAME, $KeyBasename, $DateLabel
@@ -140,19 +194,22 @@ if ($Gl) {
     Write-Host "Uploaded public key to GitLab as $KeyTitle"
 }
 
-foreach ($CopyTarget in $Copy) {
+$AllTargets = @($Target) + @($Copy) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+foreach ($CopyTarget in $AllTargets) {
     Write-Host "Installing public key on $CopyTarget..."
-    Install-PublicKeyOnHost -TargetHost $CopyTarget -KeyPath $PublicKeyPath
+    Install-PublicKeyOnHost -TargetHost $CopyTarget -KeyPath $PublicKeyPath -Port $Port
     Write-Host "Installed public key on $CopyTarget"
 }
 
-if (-not $Gh -and -not $Gl -and $Copy.Count -eq 0) {
+if (-not $Gh -and -not $Gl -and $AllTargets.Count -eq 0) {
     Write-Host @"
 
 Next steps:
   gh auth login
   glab auth login
   .\setup-ssh.ps1 -Gh -Gl
-  .\setup-ssh.ps1 -Identity ~/.ssh/business_ed25519 -Gh -Gl -Copy ansible.gbtel.ca
+  .\setup-ssh.ps1 user@host                     # copy key to host (ssh-copy-id)
+  .\setup-ssh.ps1 -Identity ~/.ssh/other_key user@host
 "@
 }

@@ -11,9 +11,10 @@ if ! command -v chezmoi >/dev/null 2>&1; then
 fi
 
 echo "==> Shell syntax"
-bash -n bootstrap.sh
-bash -n setup-ssh.sh
+bash -n scripts/bootstrap.sh
+bash -n scripts/setup-ssh.sh
 bash -n dot_local/bin/executable_preferred-editor
+bash -n dot_local/bin/executable_copy-ssh-id
 bash -n dot_config/shell/helpers.sh
 bash -n dot_config/shell/wsl-windows-path.sh
 sh -n dot_config/shell/wsl-windows-path.sh
@@ -28,9 +29,10 @@ if command -v shellcheck >/dev/null 2>&1; then
     echo "==> shellcheck"
     shellcheck \
         --severity=warning \
-        bootstrap.sh \
-        setup-ssh.sh \
+        scripts/bootstrap.sh \
+        scripts/setup-ssh.sh \
         dot_local/bin/executable_preferred-editor \
+        dot_local/bin/executable_copy-ssh-id \
         dot_config/shell/helpers.sh \
         dot_config/shell/wsl-windows-path.sh \
         dot_config/shell/path.sh
@@ -255,10 +257,10 @@ if command -v bun >/dev/null 2>&1; then
             console.error(`Expected at least 5 Renovate pin matches, got ${matches.length}`);
             process.exit(1);
         }
-        const bootstrap = fs.readFileSync("bootstrap.sh", "utf8");
+        const bootstrap = fs.readFileSync("scripts/bootstrap.sh", "utf8");
         const bootstrapMatches = [...bootstrap.matchAll(regex)];
         if (bootstrapMatches.length !== 1) {
-            console.error(`Expected 1 Renovate pin match in bootstrap.sh, got ${bootstrapMatches.length}`);
+            console.error(`Expected 1 Renovate pin match in scripts/bootstrap.sh, got ${bootstrapMatches.length}`);
             process.exit(1);
         }
     '
@@ -517,13 +519,13 @@ if [ -z "${chezmoi_version}" ]; then
     exit 1
 fi
 
-bootstrap_chezmoi_version="$(sed -n "s/^DEFAULT_CHEZMOI_VERSION=['\"]\([^'\"]*\)['\"].*$/\1/p" bootstrap.sh)"
+bootstrap_chezmoi_version="$(sed -n "s/^DEFAULT_CHEZMOI_VERSION=['\"]\([^'\"]*\)['\"].*$/\1/p" scripts/bootstrap.sh)"
 if [ -z "${bootstrap_chezmoi_version}" ]; then
-    echo "Could not read DEFAULT_CHEZMOI_VERSION from bootstrap.sh" >&2
+    echo "Could not read DEFAULT_CHEZMOI_VERSION from scripts/bootstrap.sh" >&2
     exit 1
 fi
 if [ "${bootstrap_chezmoi_version}" != "${chezmoi_version}" ]; then
-    echo "bootstrap.sh DEFAULT_CHEZMOI_VERSION (${bootstrap_chezmoi_version}) does not match .chezmoidata.toml (${chezmoi_version})" >&2
+    echo "scripts/bootstrap.sh DEFAULT_CHEZMOI_VERSION (${bootstrap_chezmoi_version}) does not match .chezmoidata.toml (${chezmoi_version})" >&2
     exit 1
 fi
 

@@ -85,3 +85,19 @@ clean:
     if (-not (Test-Path '.scratch\.gitkeep')) {
         New-Item -ItemType File -Path '.scratch\.gitkeep' -Force | Out-Null
     }
+
+# Set up SSH key, upload to GitHub/GitLab, or copy to remote hosts
+[unix]
+setup-ssh *args:
+    bash {{justfile_directory()}}/scripts/setup-ssh.sh {{args}}
+
+[windows]
+setup-ssh *args:
+    #!pwsh
+    $RepoRoot = '{{justfile_directory()}}'
+    $Script = Join-Path $RepoRoot 'scripts\setup-ssh.ps1'
+    & $Script {{args}}
+
+alias ssh-setup := setup-ssh
+alias copy-ssh-id := setup-ssh
+alias ssh-copy-id := setup-ssh

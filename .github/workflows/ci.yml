@@ -39,8 +39,8 @@ jobs:
         shell: pwsh
         run: |
           $files = @(
-            'bootstrap.ps1'
-            'setup-ssh.ps1'
+            'scripts/bootstrap.ps1'
+            'scripts/setup-ssh.ps1'
             'dot_config/powershell/agent-env.ps1'
             'dot_config/powershell/profile.ps1'
             'dot_local/share/mydotfiles/configure-terminal-fonts.ps1'
@@ -85,8 +85,8 @@ jobs:
         run: |
           Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
           $files = @(
-            'bootstrap.ps1'
-            'setup-ssh.ps1'
+            'scripts/bootstrap.ps1'
+            'scripts/setup-ssh.ps1'
             'dot_config/powershell/agent-env.ps1'
             'dot_config/powershell/profile.ps1'
             'dot_local/share/mydotfiles/configure-terminal-fonts.ps1'

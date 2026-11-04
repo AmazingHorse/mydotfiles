@@ -16,6 +16,10 @@ export LESS="${LESS:--FRX}"
 if [ -f "$HOME/.config/ripgrep/config" ]; then
     export RIPGREP_CONFIG_PATH="$HOME/.config/ripgrep/config"
 fi
+if command -v ssh-copy-id >/dev/null 2>&1; then
+    alias copy-ssh-id="ssh-copy-id"
+fi
+
 
 dots() {
     local cheatsheet_path="$HOME/.config/mydotfiles/cheatsheet"

@@ -9,8 +9,8 @@ $ErrorActionPreference = 'Stop'
 
 $RepositoryUrl = if ($env:DOTFILES_REPO_URL) { $env:DOTFILES_REPO_URL } else { 'https://github.com/AmazingHorse/mydotfiles.git' }
 $ScriptDirectory = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$RepoRoot = Split-Path -Parent $ScriptDirectory
 $ChezmoiSourceDirectory = Join-Path $HOME '.local\share\chezmoi'
-
 function Install-ChezmoiIfMissing {
     if (Get-Command chezmoi -ErrorAction SilentlyContinue) {
         return
@@ -145,7 +145,7 @@ function Invoke-WslBootstrap {
         Write-Host "WSL source: $($WslSource.Trim())"
 
         # Allocate a PTY with `script` so sudo can prompt for a password.
-        $BootstrapCommand = 'cd "$DOTFILES_BOOTSTRAP_SOURCE" && exec bash ./bootstrap.sh'
+        $BootstrapCommand = 'cd "$DOTFILES_BOOTSTRAP_SOURCE" && exec bash ./scripts/bootstrap.sh'
         if ($Ssh) {
             $BootstrapCommand += ' --ssh'
         }
@@ -189,21 +189,28 @@ function Invoke-WslBootstrap {
 
 Install-ChezmoiIfMissing
 
-if ((Test-Path -LiteralPath (Join-Path $ScriptDirectory 'dot_config')) -and (Test-Path -LiteralPath (Join-Path $ScriptDirectory '.chezmoiignore'))) {
-    Write-Host "Using local checkout: $ScriptDirectory"
-    # Bare `chezmoi apply` defaults to ~/.local/share/chezmoi. Point that at
-    # this checkout so day-to-day commands work without --source every time.
-    $DefaultSourceParent = Split-Path -Parent $ChezmoiSourceDirectory
-    if (-not (Test-Path -LiteralPath $DefaultSourceParent)) {
-        New-Item -ItemType Directory -Force -Path $DefaultSourceParent | Out-Null
+    $LocalCheckoutDir = $null
+    if ((Test-Path -LiteralPath (Join-Path $RepoRoot 'dot_config')) -and (Test-Path -LiteralPath (Join-Path $RepoRoot '.chezmoiignore'))) {
+        $LocalCheckoutDir = $RepoRoot
+    } elseif ((Test-Path -LiteralPath (Join-Path $ScriptDirectory 'dot_config')) -and (Test-Path -LiteralPath (Join-Path $ScriptDirectory '.chezmoiignore'))) {
+        $LocalCheckoutDir = $ScriptDirectory
     }
-    if (-not (Test-Path -LiteralPath $ChezmoiSourceDirectory)) {
-        New-Item -ItemType Junction -Path $ChezmoiSourceDirectory -Target $ScriptDirectory | Out-Null
-        Write-Host "Linked $ChezmoiSourceDirectory -> $ScriptDirectory"
-    }
-    & chezmoi init --source $ScriptDirectory
-    & chezmoi apply --source $ScriptDirectory
-    $ActiveSourceDirectory = $ScriptDirectory
+
+    if ($LocalCheckoutDir) {
+        Write-Host "Using local checkout: $LocalCheckoutDir"
+        # Bare `chezmoi apply` defaults to ~/.local/share/chezmoi. Point that at
+        # this checkout so day-to-day commands work without --source every time.
+        $DefaultSourceParent = Split-Path -Parent $ChezmoiSourceDirectory
+        if (-not (Test-Path -LiteralPath $DefaultSourceParent)) {
+            New-Item -ItemType Directory -Force -Path $DefaultSourceParent | Out-Null
+        }
+        if (-not (Test-Path -LiteralPath $ChezmoiSourceDirectory)) {
+            New-Item -ItemType Junction -Path $ChezmoiSourceDirectory -Target $LocalCheckoutDir | Out-Null
+            Write-Host "Linked $ChezmoiSourceDirectory -> $LocalCheckoutDir"
+        }
+        & chezmoi init --source $LocalCheckoutDir
+        & chezmoi apply --source $LocalCheckoutDir
+        $ActiveSourceDirectory = $LocalCheckoutDir
 } elseif (Test-Path -LiteralPath (Join-Path $ChezmoiSourceDirectory '.git')) {
     Write-Host 'Updating existing chezmoi source...'
     & chezmoi update --init
@@ -215,7 +222,10 @@ if ((Test-Path -LiteralPath (Join-Path $ScriptDirectory 'dot_config')) -and (Tes
 }
 
 if ($Ssh) {
-    $SetupScript = Join-Path $ActiveSourceDirectory 'setup-ssh.ps1'
+    $SetupScript = Join-Path $ActiveSourceDirectory 'scripts\setup-ssh.ps1'
+    if (-not (Test-Path -LiteralPath $SetupScript)) {
+        $SetupScript = Join-Path $ActiveSourceDirectory 'setup-ssh.ps1'
+    }
     & $SetupScript
 }
 

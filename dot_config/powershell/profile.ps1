@@ -164,6 +164,89 @@ function dots {
 
     Get-Content -LiteralPath $CheatsheetPath
 }
+function Invoke-SshCopyId {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0, Mandatory = $true)]
+        [string]$Target,
+
+        [Alias('i')]
+        [string]$Identity = '',
+
+        [Alias('p')]
+        [string]$Port = ''
+    )
+
+    if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {
+        throw 'ssh command not found. Install Windows OpenSSH Client first.'
+    }
+
+    function Expand-SshPath {
+        param([string]$Path)
+        if ($Path -eq '~') { return $HOME }
+        if ($Path.StartsWith('~/') -or $Path.StartsWith('~\')) {
+            return Join-Path $HOME $Path.Substring(2)
+        }
+        if (-not [System.IO.Path]::IsPathRooted($Path)) {
+            return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
+        }
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+
+    if (-not $Identity) {
+        $DefaultCandidates = @(
+            (Join-Path $HOME '.ssh\id_ed25519.pub'),
+            (Join-Path $HOME '.ssh\id_rsa.pub'),
+            (Join-Path $HOME '.ssh\id_ecdsa.pub')
+        )
+        foreach ($Candidate in $DefaultCandidates) {
+            if (Test-Path -LiteralPath $Candidate) {
+                $Identity = $Candidate
+                break
+            }
+        }
+    }
+
+    if (-not $Identity) {
+        throw "No SSH public key found in ~/.ssh. Specify a key with -i <path> or generate one with 'just setup-ssh'."
+    }
+
+    $ResolvedKey = Expand-SshPath $Identity
+    if (-not $ResolvedKey.EndsWith('.pub', [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (Test-Path -LiteralPath "$ResolvedKey.pub") {
+            $ResolvedKey = "$ResolvedKey.pub"
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $ResolvedKey)) {
+        throw "Public key not found: $ResolvedKey"
+    }
+
+    $PublicKeyContents = (Get-Content -LiteralPath $ResolvedKey -Raw).Trim()
+    if (-not $PublicKeyContents) {
+        throw "Public key is empty: $ResolvedKey"
+    }
+
+    $SshArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($Port)) {
+        $SshArgs += @('-p', $Port)
+    }
+    $SshArgs += $Target
+
+    $RemoteCommand = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF '$PublicKeyContents' ~/.ssh/authorized_keys || printf '%s\n' '$PublicKeyContents' >> ~/.ssh/authorized_keys"
+    $SshArgs += $RemoteCommand
+
+    Write-Host "Installing public key ($ResolvedKey) on $Target..."
+    & ssh @SshArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install public key on host: $Target"
+    }
+    Write-Host "Installed public key on $Target"
+}
+
+Set-Alias -Name ssh-copy-id -Value Invoke-SshCopyId -ErrorAction SilentlyContinue
+Set-Alias -Name copy-ssh-id -Value Invoke-SshCopyId -ErrorAction SilentlyContinue
+
 
 $RipgrepConfigPath = Join-Path $HOME '.config\ripgrep\config'
 if (Test-Path -LiteralPath $RipgrepConfigPath) {

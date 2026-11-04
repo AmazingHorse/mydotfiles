@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Cross-platform shim for ssh-copy-id.
+# If ssh-copy-id is installed, delegates directly to it.
+# Otherwise, provides a portable fallback using standard ssh.
+if command -v ssh-copy-id >/dev/null 2>&1; then
+    args=()
+    for arg in "$@"; do
+        if [ "$arg" = "--help" ]; then
+            args+=("-h")
+        else
+            args+=("$arg")
+        fi
+    done
+    exec ssh-copy-id "${args[@]}"
+fi
+identity_file=""
+ssh_port=""
+target_hosts=()
+
+expand_path() {
+    local raw_path="$1"
+    # shellcheck disable=SC2088
+    case "${raw_path}" in
+        '~'|'~/'*)
+            printf '%s\n' "${HOME}${raw_path:1}"
+            ;;
+        *)
+            printf '%s\n' "${raw_path}"
+            ;;
+    esac
+}
+
+show_help() {
+    cat <<'EOF'
+Usage: copy-ssh-id [-i [identity_file]] [-p port] [user@]hostname
+
+Cross-platform shim for OpenSSH's ssh-copy-id.
+Copies the specified (or default ~/.ssh/id_ed25519.pub) public key to a remote host.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -i)
+            if [ "$#" -lt 2 ]; then
+                echo "copy-ssh-id: -i requires an argument" >&2
+                exit 1
+            fi
+            identity_file="$(expand_path "$2")"
+            shift 2
+            ;;
+        -i*)
+            identity_file="$(expand_path "${1#-i}")"
+            shift
+            ;;
+        -p)
+            if [ "$#" -lt 2 ]; then
+                echo "copy-ssh-id: -p requires a port argument" >&2
+                exit 1
+            fi
+            ssh_port="$2"
+            shift 2
+            ;;
+        -p*)
+            ssh_port="${1#-p}"
+            shift
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        --)
+            shift
+            while [ "$#" -gt 0 ]; do
+                target_hosts+=("$1")
+                shift
+            done
+            break
+            ;;
+        -*)
+            echo "copy-ssh-id: unknown option $1" >&2
+            show_help >&2
+            exit 1
+            ;;
+        *)
+            target_hosts+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [ "${#target_hosts[@]}" -eq 0 ]; then
+    show_help >&2
+    exit 1
+fi
+
+if [ -z "${identity_file}" ]; then
+    for candidate in "${HOME}/.ssh/id_ed25519.pub" "${HOME}/.ssh/id_rsa.pub" "${HOME}/.ssh/id_ecdsa.pub"; do
+        if [ -f "${candidate}" ]; then
+            identity_file="${candidate}"
+            break
+        fi
+    done
+fi
+
+if [ -z "${identity_file}" ]; then
+    echo "copy-ssh-id: No public key found in ~/.ssh. Specify with -i." >&2
+    exit 1
+fi
+
+case "${identity_file}" in
+    *.pub) ;;
+    *)
+        if [ -f "${identity_file}.pub" ]; then
+            identity_file="${identity_file}.pub"
+        fi
+        ;;
+esac
+
+if [ ! -f "${identity_file}" ]; then
+    echo "copy-ssh-id: Public key not found: ${identity_file}" >&2
+    exit 1
+fi
+
+key_contents="$(tr -d '\r\n' < "${identity_file}")"
+if [ -z "${key_contents}" ]; then
+    echo "copy-ssh-id: Public key is empty: ${identity_file}" >&2
+    exit 1
+fi
+
+port_args=()
+if [ -n "${ssh_port}" ]; then
+    port_args=("-p" "${ssh_port}")
+fi
+
+for host in "${target_hosts[@]}"; do
+    echo "Installing ${identity_file} on ${host}..."
+    # shellcheck disable=SC2029
+    ssh ${port_args[@]+"${port_args[@]}"} "${host}" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF '${key_contents}' ~/.ssh/authorized_keys || printf '%s\n' '${key_contents}' >> ~/.ssh/authorized_keys"
+    echo "Installed key on ${host}."
+done

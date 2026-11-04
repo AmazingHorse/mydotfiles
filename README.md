@@ -13,15 +13,15 @@ Primary Linux interactive shell: **zsh** (bash as fallback).
 ### Windows (PowerShell 7)
 
 ```powershell
-irm https://raw.githubusercontent.com/AmazingHorse/mydotfiles/master/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/AmazingHorse/mydotfiles/master/scripts/bootstrap.ps1 | iex
 ```
 
 From a checkout:
 
 ```powershell
-.\bootstrap.ps1
-.\bootstrap.ps1 -Ssh          # also create/upload a local SSH key
-.\bootstrap.ps1 -SkipWsl      # Windows only
+.\scripts\bootstrap.ps1
+.\scripts\bootstrap.ps1 -Ssh          # also create/upload a local SSH key
+.\scripts\bootstrap.ps1 -SkipWsl      # Windows only
 ```
 
 If WSL never finished first-run setup, open it once (`wsl -d Ubuntu`), then
@@ -35,8 +35,8 @@ WSL disables `appendWindowsPath` and re-adds System32 plus Cursor, VS Code, and 
 From a checkout (preferred):
 
 ```bash
-./bootstrap.sh
-./bootstrap.sh --ssh
+./scripts/bootstrap.sh
+./scripts/bootstrap.sh --ssh
 ```
 
 One-shot (reliable networks only):
@@ -115,14 +115,18 @@ Private keys are never in this repo.
   `config.d/private.conf` and keeps `config.pre-chezmoi.bak`
 
 ```bash
-./setup-ssh.sh --gh --gl --copy ansible.gbtel.ca
+just setup-ssh --gh --gl ansible.gbtel.ca
+# or copy an existing key directly:
+just copy-ssh-id ansible.gbtel.ca
 ```
 
 ```powershell
-.\setup-ssh.ps1 -Gh -Gl -Copy ansible.gbtel.ca
+just setup-ssh -Gh -Gl ansible.gbtel.ca
+# or directly via PowerShell shim:
+copy-ssh-id ansible.gbtel.ca
 ```
 
-Default key `~/.ssh/id_ed25519`. See `dots` or `--help` for flags.
+Default key `~/.ssh/id_ed25519`. Use `-f` / `--force` to regenerate a new key without a passphrase (backs up old key first). See `dots` or `just setup-ssh --help` for all flags.
 
 ## History note
 
