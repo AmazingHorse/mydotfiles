@@ -128,6 +128,13 @@ copy-ssh-id ansible.gbtel.ca
 
 Default key `~/.ssh/id_ed25519`. Use `-f` / `--force` to regenerate a new key without a passphrase (backs up old key first). See `dots` or `just setup-ssh --help` for all flags.
 
+## Documentation
+
+- `docs/adr/` — Architectural Decision Records
+- `docs/how-to/` — Step-by-step guides (e.g. project scaffolding via Copier)
+- `docs/plans/` — Roadmap, architecture reviews, and design plans
+- `docs/debt.md` — Tracked technical debt and shims
+- `CONTRIBUTING.md` — Commit conventions (`feat:`, `fix:`) and PR rules
 ## History note
 
 This repo was reset to a clean history. Re-clone after the remote force-update.

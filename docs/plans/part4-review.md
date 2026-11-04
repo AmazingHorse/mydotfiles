@@ -196,7 +196,7 @@ docs/
 2. **Generate reference docs; don't hand-write them.** `just docs` renders `pins.md` from `.chezmoidata.toml` and `just-recipes.md` from `just --list`. CI fails if they're stale (`git diff --exit-code`). This is what keeps docs trustworthy for agents, which take every line literally.
 3. **Specific beats vague in AGENTS.md:** exact commands (`just check`), exact paths, "never X, do Y instead". Link to `docs/` for depth so the always-loaded context stays small.
 4. **A how-to for every recurring task.** `how-to/add-a-tool.md` becomes the checklist an agent follows when you say "add kubectl". This is the "inevitably include new tools" workflow written down.
-5. **Say where things don't go:** "scratch notes go in the PR or `plans/*.local.md`; add no new top-level files."
+5. **Say where things don't go:** "scratch notes go in the PR or `docs/plans/*.local.md`; add no new top-level files."
 6. **CI for docs:** `markdownlint`, `lychee` (dead links), and the generated-docs freshness check.
 7. **Optional:** a root `llms.txt` (an emerging convention) that indexes `docs/` for tools that fetch repos over the web.
 

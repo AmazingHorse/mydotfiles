@@ -198,19 +198,19 @@ home/                     # chezmoi source state (everything chezmoi reads)
   .chezmoi.toml.tmpl  .chezmoidata.toml  .chezmoiignore
   .chezmoiscripts/  .chezmoitemplates/
   dot_* private_* dot_config/ dot_omp/ dot_local/ dot_justfile ...
-docs/  plans/  scripts/  agent/  .github/  .cursor/
+docs/  scripts/  agent/  .github/  .cursor/
 README.md AGENTS.md CLAUDE.md CONTRIBUTING.md LICENSE justfile
-bootstrap.sh bootstrap.ps1 setup-ssh.sh setup-ssh.ps1 .pre-commit-config.yaml
+scripts/bootstrap.sh scripts/bootstrap.ps1 scripts/setup-ssh.sh scripts/setup-ssh.ps1 .pre-commit-config.yaml
 ```
 
 | Change | Files |
 |---|---|
 | Add `.chezmoiroot` (`home`). Use `git mv` to move every chezmoi source entry into `home/` in one commit with no content changes, so `git log --follow` still works | repo root → `home/` |
-| Cut `.chezmoiignore` down to target-path rules only. Repo-only entries (`README.md`, `docs/`, `scripts/`, `plans/`, …) are no longer needed because they sit outside `home/` | `home/.chezmoiignore` |
-| Update the hardcoded source paths (≈75 references) | `scripts/ci-check.sh`, `.github/workflows/*.yml`, `.github/renovate.json` (`fileMatch` → `home/dot_config/mise/...`, `home/.chezmoidata.toml`), `justfile` (`render-rules`), `bootstrap.sh` / `bootstrap.ps1` (pin reads, local-checkout link), `CONTRIBUTING.md`, `AGENTS.md`, `docs/**`, `.cursor/rules/*.mdc` |
+| Cut `.chezmoiignore` down to target-path rules only. Repo-only entries (`README.md`, `docs/`, `scripts/`, …) are no longer needed because they sit outside `home/` | `home/.chezmoiignore` |
+| Update the hardcoded source paths (≈75 references) | `scripts/ci-check.sh`, `.github/workflows/*.yml`, `.github/renovate.json` (`fileMatch` → `home/dot_config/mise/...`, `home/.chezmoidata.toml`), `justfile` (`render-rules`), `scripts/bootstrap.sh` / `scripts/bootstrap.ps1` (pin reads, local-checkout link), `CONTRIBUTING.md`, `AGENTS.md`, `docs/**`, `.cursor/rules/*.mdc` |
 | Non-workstation checkout: bootstrap clones with `--filter=blob:none`. A `run_once_after_` script (non-workstation profiles only) runs `git -C "$(chezmoi source-path)/.." sparse-checkout set --cone home` (plus the root files bootstrap needs). Workstation keeps the full checkout. If the profile changes later, the same script re-runs via a `run_onchange_` hash of `.profile` and widens or narrows the checkout | `bootstrap.sh`, `bootstrap.ps1`, new `home/.chezmoiscripts/run_onchange_after_sparse-checkout.{sh,ps1}.tmpl` |
 | Local dev checkouts: the `~/.local/share/chezmoi` → repo symlink/junction rule is unchanged (it still points at the repo root; `.chezmoiroot` handles the rest) | `bootstrap.*` |
-| CI: assert `chezmoi source-path` ends in `/home`, run the existing dry-run/apply matrix unchanged, and add a server-profile container job asserting `docs/` and `plans/` are absent after bootstrap | `scripts/ci-check.sh`, `ci.yml` |
+| CI: assert `chezmoi source-path` ends in `/home`, run the existing dry-run/apply matrix unchanged, and add a server-profile container job asserting `docs/` is absent after bootstrap | `scripts/ci-check.sh`, `ci.yml` |
 | ADR 0006: `.chezmoiroot` + profile-driven sparse checkout | `docs/adr/0006-chezmoiroot-sparse-checkout.md` |
 
 **Acceptance criteria:** `chezmoi diff` on this workstation is empty right after the move (the move is invisible to `$HOME`). A `profile=server` container bootstrap has no `docs/`, `plans/` or `scripts/` in the source checkout. `chezmoi update` works on both.
