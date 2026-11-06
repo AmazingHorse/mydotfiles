@@ -1,7 +1,9 @@
 # Portable agent guidance
 
-Canonical **Cursor User Rules**: [`cursor-user-rules.md`](cursor-user-rules.md) → paste into
-Cursor → Settings → Rules → **User Rules**. Antigravity: `dot_gemini/GEMINI.md` → `~/.gemini/GEMINI.md`.
+Canonical source: [`.chezmoitemplates/agent-core.md`](../.chezmoitemplates/agent-core.md).
+Render via `just render-rules` to [`cursor-user-rules.md`](cursor-user-rules.md) → paste into
+Cursor → Settings → Rules → **User Rules**.
+`chezmoi apply` renders the same core template into `~/.omp/agent/AGENTS.md` (omp) and `~/.gemini/GEMINI.md` (Antigravity).
 
 ## Rule inventory (avoid triple-loading)
 
@@ -15,17 +17,20 @@ Cursor → Settings → Rules → **User Rules**. Antigravity: `dot_gemini/GEMIN
 
 Do **not** copy `platform-shell` into this repo — it already lives in User Rules.
 
-## Find / refresh User Rules
+## Refreshing User Rules
 
-- **UI:** Settings → Rules → User Rules → sync into `cursor-user-rules.md`
-- **Windows DB:** `%APPDATA%\Cursor\User\globalStorage\state.vscdb`, key `aicontext.personalContext` (see dump snippet in git history / prior notes if needed)
+- **Edit:** Update `.chezmoitemplates/agent-core.md`, then run `just render-rules` and `just apply`.
+- **Cursor UI:** Paste updated `agent/cursor-user-rules.md` into Settings → Rules → User Rules.
+- **Linux Cursor DB:** `~/.config/Cursor/User/globalStorage/state.vscdb`, key `aicontext.personalContext`
+- **Windows Cursor DB:** `%APPDATA%\Cursor\User\globalStorage\state.vscdb`, key `aicontext.personalContext`
 
 ## Layout
 
 | What | Where |
 |------|--------|
-| Global | User Rules ← `cursor-user-rules.md` |
-| This repo | `.cursor/rules/*.mdc` |
-| Other repos | their project rules only (no platform-shell clone) |
-| Antigravity | `chezmoi apply` → `~/.gemini/GEMINI.md` |
-| omp | `dot_omp/` → `~/.omp/` |
+| Canonical template | `.chezmoitemplates/agent-core.md` |
+| omp | `dot_omp/` → `~/.omp/agent/AGENTS.md` (+ seeds, archetypes, prompts, `command-guard`) |
+| Antigravity | `dot_gemini/GEMINI.md.tmpl` → `~/.gemini/GEMINI.md` |
+| Cursor Global | User Rules ← `agent/cursor-user-rules.md` (`just render-rules`) |
+| This repo | `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/*.mdc` |
+| Other repos | `AGENTS.md` + `.agent-profile.md` (via `just -g new` / `just -g seed`) |

@@ -7,8 +7,8 @@ Cross-project habits across AI coding agents. Repo-specific guidance stays in ea
 Match the environment on the **first** shell call. Prefer tooling that works across Windows and Unix.
 
 - Check environment/OS on launch.
-- **Windows / PowerShell:** Use PowerShell first. Do **not** bash-probe (`command -v`, `which`, `2>/dev/null`, heredocs) then fall back.
 - **Unix / Linux / macOS:** Use bash/zsh normally.
+- **Windows / PowerShell:** Use PowerShell first. Do **not** bash-probe (`command -v`, `which`, `2>/dev/null`, heredocs) then fall back.
 - Automation / task runner: Prefer `just` or shell scripts native to the platform. Repo-relative paths only; never hardcode `/home/...` or `C:\Users\...` in committed scripts.
 
 ## Agency

@@ -2,13 +2,27 @@
 
 Cross-platform shell setup managed with [chezmoi](https://www.chezmoi.io/).
 
+- Linux (bare-metal Debian/Ubuntu and WSL Ubuntu/Debian)
 - Windows PowerShell 7
-- WSL Ubuntu/Debian
-- bare-metal Debian/Ubuntu
 
 Primary Linux interactive shell: **zsh** (bash as fallback).
 
 ## Bootstrap
+
+### Linux / WSL
+
+From a checkout (preferred):
+
+```bash
+./scripts/bootstrap.sh
+./scripts/bootstrap.sh --ssh          # also create/upload a local SSH key
+```
+
+One-shot (reliable networks only):
+
+```bash
+sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply https://github.com/AmazingHorse/mydotfiles.git
+```
 
 ### Windows (PowerShell 7)
 
@@ -30,21 +44,6 @@ half — that is expected.
 
 WSL disables `appendWindowsPath` and re-adds System32 plus Cursor, VS Code, and Antigravity CLI paths; run `wsl.exe --shutdown` from Windows PowerShell to apply.
 
-### Linux / WSL
-
-From a checkout (preferred):
-
-```bash
-./scripts/bootstrap.sh
-./scripts/bootstrap.sh --ssh
-```
-
-One-shot (reliable networks only):
-
-```bash
-sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply https://github.com/AmazingHorse/mydotfiles.git
-```
-
 ## Daily update
 
 ```bash
@@ -59,30 +58,69 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 
 ## What you get
 
-- Oh My Posh + Everforest + CaskaydiaCove Nerd Font; PowerShell 7 profile
-- zsh/bash + shared helpers; preferred-editor chain
-- `zoxide`, `rg`, `fd`, `delta`, `mise`, `just` (pinned); `fzf` helpers
-- Linux/WSL: Bun + Oh My Pi (`omp`) via mise, and Antigravity CLI (`agy`) via the official self-updating installer to `~/.local/bin`
-- Git defaults + machine-local identity
-- shared `~/.ssh/config` (no private keys)
+- zsh/bash + shared helpers; preferred-editor chain (`Cursor → Antigravity → VS Code → nvim/vim/vi`)
+- Oh My Posh + Everforest + CaskaydiaCove Nerd Font; PowerShell 7 profile on Windows
+- Pinned CLI stack via `mise`: `zoxide`, `rg`, `fd`, `delta`, `just`, `uv`, `yq`, `fnox`, `betterleaks`, plus `rbw` (Linux/WSL) / `bw` (Windows); `fzf` shell helpers
+- AI & project tooling (`workstation` / `ephemeral` profiles): Python, Node, Bun, Oh My Pi (`omp`), `agy-crew`, and `copier` via `mise`; Antigravity CLI (`agy`) on Linux/WSL via official installer to `~/.local/bin`
+- Optional `mise` toolsets (`.chezmoidata.toml` / `~/.config/chezmoi/chezmoi.toml`): `infra` (`opentofu`, `kubectl`), `containers` (`helm`), `rust` (`cargo-binstall`)
+- Machine profiles: `workstation` (default), `server` (headless/minimal CLI), `ephemeral` (containers/Codespaces)
+- Git defaults + machine-local identity + `betterleaks` pre-commit hook
+- Shared `~/.ssh/config` (no private keys)
 
 Pinned versions: `.chezmoidata.toml`. In-shell cheat sheet: **`dots`**
 (same command in zsh/bash and PowerShell). Repo tasks: **`just`** (see
-`justfile`).
+`justfile`). Global agent/project tasks: **`just -g`** (deployed to `~/.justfile`).
 
-Portable agent guidance: `agent/cursor-user-rules.md` (paste into Cursor User
-Rules) and `~/.gemini/GEMINI.md` (Antigravity; `chezmoi apply`).
+Portable agent guidance: `.chezmoitemplates/agent-core.md` rendered via `just render-rules` to `agent/cursor-user-rules.md` (paste into Cursor User Rules), `~/.gemini/GEMINI.md` (Antigravity), and `~/.omp/agent/AGENTS.md` (omp).
 
-## Agent control plane
+## Agent control plane (`just -g`)
 
-The global omp contract, archetypes, and prompts are deployed under
-`~/.omp/`; Linux also links agy-crew skills into omp. Bash/zsh and PowerShell
-load platform-specific agent environment defaults. Use the global recipes:
-`just -g doctor`, `just -g agent-init [archetype]`, `just -g plan <task>`, and
-`just -g omp-run [args...]`.
+The global omp contract, seeds (`python`, `typescript-node`, `systems-shell`, `minimal`), archetypes (`infra-ops`, `agent-cli`, `data-pipeline`, `legacy-port`), Prompts, and `command-guard` extension are deployed under `~/.omp/`; Linux also links `agy-crew` skills into omp. Bash/zsh and PowerShell load platform-specific agent environment defaults (`~/.config/agent-env.sh` / PowerShell profile).
 
-`mise` is scaffolding only (global Python, Node, Bun, and omp pins + activate). Flipper / embedded
-toolchains and flashing hosts belong in separate project repos.
+Run `just -g` from any directory:
+
+```bash
+just -g doctor                                      # inspect env, stack, pins, secrets, command-guard
+just -g seed [lang] [archetype]                     # scaffold AGENTS.md + .agent-profile.md
+just -g agent-init [archetype]                      # attach an archetype profile to current repo
+just -g plan "task description"                     # draft .agent-spec.md via omp (plan-only)
+just -g omp-run [args...]                           # run omp with .agent-profile.md & .agent-spec.md
+just -g worktree-new <branch>                       # create ../wt-<branch> sibling git worktree
+just -g worktree-done <branch>                      # remove sibling worktree when clean
+```
+
+## Project scaffolding (Copier)
+
+`just -g new` and `just -g adopt` wrap layered [Copier](https://copier.readthedocs.io/) templates (pinned in `.chezmoidata.toml`, default ref `v0.1.0`):
+
+- **Base underlay (`copier-base`):** [`https://github.com/AmazingHorse/copier-base`](https://github.com/AmazingHorse/copier-base) — `.editorconfig`, `.gitignore`, `.gitattributes`, `.pre-commit-config.yaml` (`betterleaks`), `AGENTS.md`, `fnox.toml`, `justfile`, `.copier-answers.base.yml`
+- **Infra-ops archetype (`copier-infra-ops`):** [`https://github.com/AmazingHorse/copier-infra-ops`](https://github.com/AmazingHorse/copier-infra-ops) — `.agent-profile.md`, `mise.toml` (Ansible/uv, OpenTofu, or both), `ansible.cfg`, `inventory/`, `playbooks/`, `infra/`, `.copier-answers.infra-ops.yml`
+
+```bash
+just -g new ~/projects/my-service                                        # base template only
+just -g new ~/projects/my-cluster --archetype infra-ops --company Acme   # base + infra-ops overlay
+just -g adopt . --archetype infra-ops --ref v0.1.0                       # adopt in existing repo
+copier update --answers-file .copier-answers.base.yml --UNSAFE           # pull template updates
+copier update --answers-file .copier-answers.infra-ops.yml --UNSAFE
+```
+
+See [`docs/how-to/start-a-project.md`](docs/how-to/start-a-project.md) for full lifecycle details.
+
+## Secrets (`fnox` + Bitwarden)
+
+- **Global agent keys:** Chezmoi reads custom fields from Bitwarden's `ai-agent-keys` item into `~/.config/agent-secrets.env` (using `rbw` on Linux/WSL, `bw` on Windows). Local overrides go in `~/.config/agent-env.local.sh`.
+- **Per-project secrets:** Stored in Bitwarden folder `proj` under the project slug and referenced in `fnox.toml` (`provider = "vault"`). Inject into child processes without polluting shell state:
+
+```bash
+rbw login && rbw unlock          # Linux/WSL vault unlock (Windows: bw unlock)
+fnox check                       # verify all secret references resolve
+fnox doctor                      # diagnose vault provider status
+fnox exec -- just deploy         # run command with project secrets injected
+```
+
+See [`docs/explanation/security-model.md`](docs/explanation/security-model.md) for architecture and sandbox boundaries.
+
+`mise` manages global CLI pins and language runtimes. Flipper / embedded toolchains and flashing hosts belong in separate project repos.
 
 ## Git identity
 
@@ -130,13 +168,10 @@ Default key `~/.ssh/id_ed25519`. Use `-f` / `--force` to regenerate a new key wi
 
 ## Documentation
 
-- `docs/adr/` — Architectural Decision Records
-- `docs/how-to/` — Step-by-step guides (e.g. project scaffolding via Copier)
-- `docs/plans/` — Roadmap, architecture reviews, and design plans
-- `docs/debt.md` — Tracked technical debt and shims
-- `CONTRIBUTING.md` — Commit conventions (`feat:`, `fix:`) and PR rules
-## History note
-
-This repo was reset to a clean history. Re-clone after the remote force-update.
-Do not reintroduce encrypted private-key blobs. Optional local backup:
-`../mydotfiles-legacy-backup/`.
+- [`docs/how-to/start-a-project.md`](docs/how-to/start-a-project.md) — Project scaffolding and adoption with Copier (`copier-base`, `copier-infra-ops`)
+- [`docs/how-to/add-a-tool.md`](docs/how-to/add-a-tool.md) — Adding and pinning new CLI tools via `mise` and `.chezmoidata.toml`
+- [`docs/explanation/security-model.md`](docs/explanation/security-model.md) — Secret delivery (`fnox`, `rbw`/`bw`) and sandbox boundaries
+- [`docs/adr/`](docs/adr/) — Architectural Decision Records
+- [`docs/plans/`](docs/plans/) — Roadmap, architecture reviews, and design plans
+- [`docs/debt.md`](docs/debt.md) — Tracked technical debt and shims
+- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — Commit conventions (`feat:`, `fix:`) and PR rules
