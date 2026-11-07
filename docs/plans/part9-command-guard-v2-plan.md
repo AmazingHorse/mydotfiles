@@ -34,40 +34,20 @@ Both Claude Code (`code.claude.com/docs/en/permissions`) and Devin CLI (`docs.de
 | :--- | :--- | :--- | :--- | :--- |
 | **Project Shared (Team / Repo)** | **Committed** | `.claude/settings.json` | `.devin/config.json` | `.omp/permissions.json` |
 | **Project Personal (Machine-Local)** | **Gitignored** | `.claude/settings.local.json` | `.devin/config.local.json` | `.omp/permissions.local.json` |
-| **User Global** | User `$HOME` | `~/.claude/settings.json` | `~/.config/devin/config.json` | `~/.omp/agent/permissions.json` |
+| **User Global** | User `$HOME` | `~/.claude/settings.json` | `~/.config/devin/config.json` (Linux/macOS)<br>`%APPDATA%\devin\config.json` (Windows) | `~/.omp/agent/permissions.json` |
 | **Managed Defaults** | Dotfiles `$HOME` | — | — | `~/.omp/agent/permissions.defaults.json` |
 
-### 1.2 Shared Rule Grammar (`"Bash(<prefix> *)"`)
-- **Claude Code:** Supports `"Bash(git status *)"` (word-boundary prefix glob, current recommended syntax), legacy `"Bash(git status:*)"`, bare `"Bash(pwd)"`, `Read(path)`, and `Edit(path)`.
-- **Devin CLI:** Supports `"Bash(git status *)"`, bare `"Bash(pwd)"`, `Read(path)`, and `Edit(path)` (does not use legacy `: *`).
-- **Canonical Format:** Writing **`"Bash(<prefix> *)"`** for command prefixes and **`"Read(<path>/**)"` / `"Edit(<path>/**)"`** for allowed paths produces a single JSON structure that is natively valid in Claude Code, Devin CLI, and omp:
+### 1.2 Exact Rule Grammar Translation (`Claude` vs `Devin` vs `omp`)
+Both Claude Code and Devin CLI use the exact same top-level `permissions: { allow: [], ask: [], deny: [] }` structure and identical `Read(glob)` and `mcp__server__tool` rules, with **one key matcher name difference** that `adapters.ts` must translate when reading/mirroring:
 
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(git status *)",
-      "Bash(just check *)",
-      "Bash(bun test *)"
-    ],
-    "ask": [
-      "Bash(git push *)"
-    ],
-    "deny": [
-      "Bash(sudo *)",
-      "Bash(rm -rf / *)",
-      "Read(**/.env)",
-      "Edit(~/.ssh/**)"
-    ]
-  },
-  "omp": {
-    "allowOutside": ["git status"],
-    "allowedPaths": ["/usr/local/share"]
-  }
-}
-```
+| Rule Category | Claude Code Syntax (`.claude/settings*.json`) | Devin CLI Syntax (`.devin/config*.json`) | Internal `PermissionRules` (`omp`) |
+| :--- | :--- | :--- | :--- |
+| **Shell Command Prefix** | `"Bash(git status *)"` or `"Bash(git status:*)"` or `"Bash(pwd)"` | `"Exec(git status)"` *(matches `git status` and `git status ...` at word boundary)* | `allow/ask/deny: ["git status"]` |
+| **File Read Glob** | `"Read(**/.env)"`, `"Read(/usr/local/share/**)"` | `"Read(**/.env)"`, `"Read(/usr/local/share/**)"` | `allowedPaths` / `readRules` |
+| **File Write/Edit Glob** | `"Edit(~/.ssh/**)"`, `"Write(/tmp/out/**)"` | `"Write(~/.ssh/**)"`, `"Write(/tmp/out/**)"` | `allowedPaths` / `writeRules` |
+| **MCP Tool Rule** | `"mcp__server__tool"`, `"mcp__server__*"` | `"mcp__server__tool"`, `"mcp__server__*"` | `mcpRules` |
 
-### 1.3 Safe Collaborative Project `allow` Rules
+> **Note on Devin CLI `read_config_from`:** Devin CLI also supports `"read_config_from": ["claude"]` in `~/.config/devin/config.json` (which imports Claude Code's `CLAUDE.md`, skills, and MCP servers), **but** per official Devin CLI docs (`docs.devin.ai/cli/reference/configuration/read-config-from`), Devin intentionally does **not** import permissions via `read_config_from`. Therefore, our `adapters.ts` lazy mirror writing `"Exec(<prefix>)"` + `"Write(<glob>)"` into `.devin/config[.local].json` and `"Bash(<prefix> *)"` + `"Edit(<glob>)"` into `.claude/settings[.local].json` is essential and fills an exact upstream gap!
 Currently `store.ts:110` drops `allow` rules from committed project files (`allow: []`). To support team collaboration in `.claude/settings.json` / `.devin/config.json` / `.omp/permissions.json` safely:
 1. **Permit `allow`, `ask`, and `deny` at the `project` level**, while **keeping `allowOutside: []` and `allowedPaths: []` stripped at `project` level** (so a committed repo config can never grant sandbox escapes outside `cwd`).
 2. **Non-Bypassable Invariants:**
