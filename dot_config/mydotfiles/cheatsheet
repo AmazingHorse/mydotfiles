@@ -48,6 +48,30 @@ Global agent & project runner (just -g) — from any directory
   just -g worktree-new <br>   create sibling worktree ../wt-<br>
   just -g worktree-done <br>  remove clean sibling worktree
 
+omp Power-User Guide (TUI, Subagents, URIs & Tools)
+  TUI & Session Control
+    ? or /btw <q>             side-question panel without interrupting active turn
+    /tan                      clone current session into a parallel side-agent
+    /wt [branch]              move live omp session into an isolated git worktree
+    /context                  inspect token usage by system prompt, tools & turns
+    /resume | omp --continue  reopen recent session across repo worktrees
+  Subagent Delegation (say "parallelize across subagents" or invoke by role)
+    scout                     fast read-only codebase exploration (saves main context)
+    task                      full multi-step implementation worker (up to 32 parallel)
+    reviewer | security-reviewer  evidence-backed diff / vulnerability audit
+    seance                    query a past session transcript without loading it inline
+  Built-in Internal URIs (usable in read, grep, glob, write, bash)
+    pr://<N>/diff             read GitHub PR diff (or issue://<N> for issues)
+    ssh://host/~/path         read/write/grep remote UTF-8 files over SSH directly
+    file.db:table?q=SELECT..  inspect SQLite tables/queries directly via read
+    archive.zip:member/path   inspect/write inside ZIP/tar/deb/whl archives directly
+  Code Intelligence & Eval Kernel
+    xd://lsp                  definitions, references, hover, rename (prefer over grep)
+    xd://ast_edit             syntax-aware structural codemods & refactors
+    xd://debug                attach DAP debugger to inspect failing test frames
+    eval (py / js)            stateful Python & Bun kernel + headless Chromium (browser)
+    agy-crew                  /agy-crew-ask, /agy-crew-reviewer, /agy-crew-implementer
+
 Project scaffolding (Copier — default ref: v0.1.0)
   just -g new <dir> [--archetype infra-ops] [--company <name>] [--ref <tag>]
   just -g adopt [dir] [--archetype infra-ops] [--company <name>] [--ref <tag>]
