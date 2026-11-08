@@ -52,7 +52,7 @@ fi
 
 if [ -n "${wt_bin}" ]; then
     echo "Installing Worktrunk plugins..."
-    "${wt_bin}" config plugins opi install --yes || true
+    "${wt_bin}" config plugins omp install --yes || true
     if command -v claude >/dev/null 2>&1; then
         case "$(command -v claude)" in
             /mnt/*) ;;
