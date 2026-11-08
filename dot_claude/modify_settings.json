@@ -1,0 +1,26 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- $current := dict -}}
+{{- if and (hasKey .chezmoi "stdin") (trim .chezmoi.stdin) -}}
+{{-   $current = fromJson .chezmoi.stdin -}}
+{{- end -}}
+{{- $hookCmd := "bun \"$HOME/.omp/agent/extensions/command-guard/hook.ts\"" -}}
+{{- if eq .chezmoi.os "windows" -}}
+{{-   $hookCmd = "bun \"%USERPROFILE%/.omp/agent/extensions/command-guard/hook.ts\"" -}}
+{{- end -}}
+{{- $guardHook := dict "matcher" "^(Bash|exec)$" "command" $hookCmd "timeout" 5 -}}
+{{- $hooks := dict -}}
+{{- if and (hasKey $current "hooks") (kindIs "map" (get $current "hooks")) -}}
+{{-   $hooks = get $current "hooks" -}}
+{{- end -}}
+{{- $preToolUse := list -}}
+{{- if and (hasKey $hooks "PreToolUse") (kindIs "slice" (get $hooks "PreToolUse")) -}}
+{{-   range (get $hooks "PreToolUse") -}}
+{{-     if not (and (hasKey . "command") (regexMatch "command-guard/hook\\.ts" (get . "command"))) -}}
+{{-       $preToolUse = append $preToolUse . -}}
+{{-     end -}}
+{{-   end -}}
+{{- end -}}
+{{- $preToolUse = append $preToolUse $guardHook -}}
+{{- $_ := set $hooks "PreToolUse" $preToolUse -}}
+{{- $_ := set $current "hooks" $hooks -}}
+{{- $current | toJson -}}

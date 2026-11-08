@@ -2,11 +2,10 @@
 
 Tracked shims, temporary bridges, and planned upstream replacements.
 
-## 1. Devin-Style Bash Permission Shim (`command-guard`)
+## 1. Cross-Harness Bash Permission Shim and PreToolUse Hook (`command-guard`)
 - **Location:** `dot_omp/private_agent/extensions/command-guard/`
-- **Why it exists:** Upstream omp lacks granular per-command approval persistence. The extension intercepts bash tool executions to enforce allow/ask/deny lists and workspace path confinement.
-- **Retirement criteria:** Retire when upstream omp provides native rule-based permission gating or when agent runs are sandboxed at the OS container layer.
-
+- **Why it exists:** AI coding harnesses (omp, Claude Code, Devin CLI) have fragmented and uneven security primitives. Hard security checks (`bash -c`, command substitution `$()`, `git -c`, workspace escapes, protected agent configs) lack declarative schema representation in Claude and Devin settings. `command-guard` provides a unified policy engine in omp and a `PreToolUse` hook CLI (`hook.ts`) for Claude and Devin.
+- **Retirement criteria:** Retire when native PreToolUse hook protocols and granular per-command approval rules are standardized and natively supported across all three coding agent harnesses, or when all runs are sandboxed at the OS container layer.
 ## 2. Windows WSL Font Propagation
 - **Location:** `dot_local/share/mydotfiles/configure-terminal-fonts.ps1`
 - **Why it exists:** Windows Terminal configuration lives on the Windows host filesystem while dev environments run inside WSL2.
@@ -16,15 +15,9 @@ Tracked shims, temporary bridges, and planned upstream replacements.
 - **Location:** `dot_omp/private_agent/extensions/command-guard/`
 - **Resolution:** Decomposed into modular `command-guard/` package. The lexer ignores quoted heredoc bodies (`<< 'EOF'`), strips shell flow keywords and comments, normalizes canonical `<binary> <subcommand>` tokens past benign global flags, and skips template expressions (`{{ ... }}`) and single-quoted literals from false-positive path escaping.
 
-## 4. Heredoc Quoting and Duplicate Session Approvals in `command-guard`
+## 4. Heredoc Quoting and Duplicate Session Approvals in `command-guard` (Resolved 2026-11-08)
 - **Location:** `dot_omp/private_agent/extensions/command-guard/`
-- **Why it exists:** Edge cases in the shell parser and session approval tracking:
-  - **Heredoc string quoting:** Empty quotes (e.g. `""` or `''`) inside a Python heredoc body improperly trip approval gating in the command parser.
-  - **Duplicate session approvals for Python scripts:** Granting session approval for Python script runs (which trigger on the binary and script name, e.g. `python <script>`) sometimes prompts for approval a second time within the same session.
-- **Mitigation / Next steps:**
-  - Audit `parser.ts` to ensure quoted strings and empty quotes inside heredoc payloads are ignored or properly lexed within the heredoc body rather than bleeding into command segment boundaries.
-  - Investigate prefix normalization and session allowlist persistence in `index.ts` / `rules.ts` when matching two-token Python script invocations across tool calls.
-
+- **Resolution:** Hardened in `command-guard` v2 (ADR 0006). Lexer stack supports nested quotes inside `$()`, backslash-escaped delimiters (`\EOF`), line continuations (`\<newline>`), and multi-command lines (`&&`, `|`). Normalized Python prefixes (`python3 script.py` -> `python3`, `python3 -m <mod>` -> `python3 -m <mod>`). Hoisted session approval sets to module scope to eliminate duplicate prompts across subagents and sibling instances.
 ## 5. GitHub CLI (`gh`) Cross-Platform Manifest and PR Workflows
 - **Location:** `.chezmoiscripts/run_onchange_after_install-packages.ps1.tmpl`, `dot_config/mise/config.toml.tmpl`, `.chezmoidata.toml`
 - **Why it exists:** Windows currently installs `GitHub.cli` via an ad-hoc `winget` call in package install scripts, while Linux/WSL lacks `gh` entirely. It is not declared in the declarative mise manifest or pinned in `.chezmoidata.toml`, and there is no automated PR creation recipe for developer/agent workflows.

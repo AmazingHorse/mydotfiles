@@ -22,12 +22,82 @@ type PendingHeredoc = {
 	stripTabs: boolean;
 };
 
+type ContextState = "root" | "dquote" | "subst";
+
 function hasTemplateSyntax(text: string): boolean {
 	return (
 		(text.includes("{{") && text.includes("}}")) ||
 		text.startsWith("{{-") ||
 		text.endsWith("-}}")
 	);
+}
+
+function isEscapedByIndex(str: string, idx: number): boolean {
+	let backslashes = 0;
+	let i = idx - 1;
+	while (i >= 0 && str[i] === "\\") {
+		backslashes++;
+		i--;
+	}
+	return backslashes % 2 === 1;
+}
+
+function containsUnescapedExpansions(line: string): boolean {
+	for (let i = 0; i < line.length; i++) {
+		if (isEscapedByIndex(line, i)) continue;
+		if (line[i] === "`") return true;
+		if (line[i] === "$" && i + 1 < line.length) {
+			const next = line[i + 1];
+			if (next === "(" || next === "{") return true;
+		}
+	}
+	return false;
+}
+
+function parseHeredocDelimiter(
+	command: string,
+	startIndex: number,
+): { delimiter: string; quoted: boolean; endIndex: number } {
+	let index = startIndex;
+	while (index < command.length && (command[index] === " " || command[index] === "\t")) {
+		index++;
+	}
+
+	let delimiter = "";
+	let quoted = false;
+
+	while (index < command.length && !/[\s;|&<>\n]/.test(command[index])) {
+		const char = command[index];
+		if (char === "\\") {
+			quoted = true;
+			index++;
+			if (index < command.length) {
+				delimiter += command[index];
+				index++;
+			}
+		} else if (char === "'" || char === '"') {
+			quoted = true;
+			const quoteChar = char;
+			index++;
+			while (index < command.length && command[index] !== quoteChar) {
+				if (quoteChar === '"' && command[index] === "\\" && index + 1 < command.length) {
+					index++;
+					delimiter += command[index];
+				} else {
+					delimiter += command[index];
+				}
+				index++;
+			}
+			if (index < command.length && command[index] === quoteChar) {
+				index++;
+			}
+		} else {
+			delimiter += char;
+			index++;
+		}
+	}
+
+	return { delimiter, quoted, endIndex: index };
 }
 
 export function parseShellCommand(command: string): ShellParseResult {
@@ -37,8 +107,6 @@ export function parseShellCommand(command: string): ShellParseResult {
 	let currentQuotes: Array<"'" | '"'> = [];
 	let isNextWordRedirectTarget = false;
 	let complex = false;
-	let quote: "'" | '"' | undefined;
-	let substitutionDepth = 0;
 	let pendingHeredocs: PendingHeredoc[] = [];
 
 	const flushWord = () => {
@@ -91,24 +159,61 @@ export function parseShellCommand(command: string): ShellParseResult {
 	};
 
 	let index = 0;
+
+	const consumePendingHeredocs = () => {
+		for (const heredoc of pendingHeredocs) {
+			let line = "";
+			let matched = false;
+			while (index < command.length) {
+				const c = command[index];
+				if (c === "\n") {
+					let compareLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+					if (heredoc.stripTabs) {
+						compareLine = compareLine.replace(/^\t+/, "");
+					}
+					if (compareLine === heredoc.delimiter) {
+						index++; // consume \n
+						matched = true;
+						line = "";
+						break;
+					}
+					if (!heredoc.quoted && containsUnescapedExpansions(line)) {
+						complex = true;
+					}
+					line = "";
+					index++;
+				} else {
+					line += c;
+					index++;
+				}
+			}
+			if (!matched && line.length > 0) {
+				let compareLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+				if (heredoc.stripTabs) {
+					compareLine = compareLine.replace(/^\t+/, "");
+				}
+				if (compareLine === heredoc.delimiter) {
+					matched = true;
+					line = "";
+				} else if (!heredoc.quoted && containsUnescapedExpansions(line)) {
+					complex = true;
+				}
+			}
+			if (!matched && !heredoc.quoted) {
+				complex = true;
+			}
+		}
+		pendingHeredocs = [];
+	};
+	const stack: ContextState[] = ["root"];
+
 	while (index < command.length) {
 		const char = command[index];
+		const ctx = stack[stack.length - 1];
 
-		// Inside single quotes: literal until next single quote
-		if (quote === "'") {
-			if (char === "'") {
-				quote = undefined;
-			} else {
-				currentText += char;
-			}
-			index++;
-			continue;
-		}
-
-		// Inside double quotes
-		if (quote === '"') {
+		if (ctx === "dquote") {
 			if (char === '"') {
-				quote = undefined;
+				stack.pop();
 				index++;
 				continue;
 			}
@@ -123,7 +228,7 @@ export function parseShellCommand(command: string): ShellParseResult {
 			if (char === "$" && command[index + 1] === "(") {
 				complex = true;
 				currentText += "$(";
-				substitutionDepth++;
+				stack.push("subst");
 				index += 2;
 				continue;
 			}
@@ -132,20 +237,93 @@ export function parseShellCommand(command: string): ShellParseResult {
 			continue;
 		}
 
-		// Inside command substitution $(...)
-		if (substitutionDepth > 0) {
-			if (char === "(") {
-				substitutionDepth++;
-			} else if (char === ")") {
-				substitutionDepth--;
+		if (ctx === "subst") {
+			if (char === "\\") {
+				if (index + 1 < command.length && command[index + 1] === "\n") {
+					index += 2;
+					continue;
+				}
+				if (index + 1 < command.length) {
+					currentText += command[index] + command[index + 1];
+					index += 2;
+				} else {
+					currentText += char;
+					index++;
+				}
+				continue;
+			}
+			if (char === "'") {
+				currentText += "'";
+				index++;
+				while (index < command.length && command[index] !== "'") {
+					currentText += command[index];
+					index++;
+				}
+				if (index < command.length && command[index] === "'") {
+					currentText += "'";
+					index++;
+				}
+				continue;
+			}
+			if (char === '"') {
+				currentText += '"';
+				stack.push("dquote");
+				index++;
+				continue;
+			}
+			if (char === "$" && command[index + 1] === "(") {
+				complex = true;
+				currentText += "$(";
+				stack.push("subst");
+				index += 2;
+				continue;
+			}
+			if (char === ")") {
+				stack.pop();
+				currentText += ")";
+				index++;
+				continue;
+			}
+			if (char === "<" && command[index + 1] === "<" && command[index + 2] !== "<") {
+				index += 2;
+				let stripTabs = false;
+				if (command[index] === "-") {
+					stripTabs = true;
+					index++;
+				}
+				const parsed = parseHeredocDelimiter(command, index);
+				index = parsed.endIndex;
+				if (parsed.delimiter.length > 0) {
+					pendingHeredocs.push({
+						delimiter: parsed.delimiter,
+						quoted: parsed.quoted,
+						stripTabs,
+					});
+				}
+				continue;
+			}
+			if (char === "\n") {
+				if (pendingHeredocs.length > 0) {
+					index++;
+					consumePendingHeredocs();
+				} else {
+					currentText += char;
+					index++;
+				}
+				continue;
 			}
 			currentText += char;
 			index++;
 			continue;
 		}
 
-		// Escape outside quotes
+		// ctx === "root"
+		// Backslash escape outside quotes
 		if (char === "\\") {
+			if (index + 1 < command.length && command[index + 1] === "\n") {
+				index += 2; // Line continuation
+				continue;
+			}
 			if (index + 1 < command.length) {
 				currentText += command[index + 1];
 				index += 2;
@@ -157,7 +335,6 @@ export function parseShellCommand(command: string): ShellParseResult {
 
 		// Comment start: '#' when starting a word
 		if (char === "#" && currentText.length === 0) {
-			// Skip until end of line
 			while (index < command.length && command[index] !== "\n") {
 				index++;
 			}
@@ -166,16 +343,22 @@ export function parseShellCommand(command: string): ShellParseResult {
 
 		// Entering single quote
 		if (char === "'") {
-			quote = "'";
 			currentQuotes.push("'");
 			index++;
+			while (index < command.length && command[index] !== "'") {
+				currentText += command[index];
+				index++;
+			}
+			if (index < command.length && command[index] === "'") {
+				index++;
+			}
 			continue;
 		}
 
 		// Entering double quote
 		if (char === '"') {
-			quote = '"';
 			currentQuotes.push('"');
+			stack.push("dquote");
 			index++;
 			continue;
 		}
@@ -184,7 +367,7 @@ export function parseShellCommand(command: string): ShellParseResult {
 		if (char === "$" && command[index + 1] === "(") {
 			complex = true;
 			currentText += "$(";
-			substitutionDepth++;
+			stack.push("subst");
 			index += 2;
 			continue;
 		}
@@ -209,48 +392,32 @@ export function parseShellCommand(command: string): ShellParseResult {
 		if ((char === ">" || char === "<") && command[index + 1] === "(") {
 			complex = true;
 			currentText += `${char}(`;
-			substitutionDepth++;
+			stack.push("subst");
 			index += 2;
 			continue;
 		}
 
-		// Heredoc operator: << or <<-
+		// Heredoc operator: << or <<- (with FD prefix handling)
 		if (char === "<" && command[index + 1] === "<" && command[index + 2] !== "<") {
-			flushWord();
+			if (/^\d+$/.test(currentText) && currentQuotes.length === 0) {
+				currentText = "";
+			} else {
+				flushWord();
+			}
 			index += 2;
 			let stripTabs = false;
 			if (command[index] === "-") {
 				stripTabs = true;
 				index++;
 			}
-			// Skip whitespace before delimiter
-			while (index < command.length && (command[index] === " " || command[index] === "\t")) {
-				index++;
-			}
-			let delimiter = "";
-			let heredocQuoted = false;
-			while (index < command.length && !/[\s;|&<>\n]/.test(command[index])) {
-				const delimChar = command[index];
-				if (delimChar === "'" || delimChar === '"' || delimChar === "\\") {
-					heredocQuoted = true;
-					if (delimChar === "\\" && index + 1 < command.length) {
-						index++;
-						delimiter += command[index];
-					} else if (delimChar === "'" || delimChar === '"') {
-						const delimQuote = delimChar;
-						index++;
-						while (index < command.length && command[index] !== delimQuote) {
-							delimiter += command[index];
-							index++;
-						}
-					}
-				} else {
-					delimiter += delimChar;
-				}
-				index++;
-			}
-			if (delimiter.length > 0) {
-				pendingHeredocs.push({ delimiter, quoted: heredocQuoted, stripTabs });
+			const parsed = parseHeredocDelimiter(command, index);
+			index = parsed.endIndex;
+			if (parsed.delimiter.length > 0) {
+				pendingHeredocs.push({
+					delimiter: parsed.delimiter,
+					quoted: parsed.quoted,
+					stripTabs,
+				});
 			}
 			continue;
 		}
@@ -264,7 +431,7 @@ export function parseShellCommand(command: string): ShellParseResult {
 
 		// Normal Redirections: >, >>, >|, <, <>
 		if (char === ">" || char === "<") {
-			if (/^\d+$/.test(currentText)) {
+			if (/^\d+$/.test(currentText) && currentQuotes.length === 0) {
 				currentText = "";
 			} else {
 				flushWord();
@@ -276,7 +443,6 @@ export function parseShellCommand(command: string): ShellParseResult {
 			if (command[index] === "|") index++;
 			if (command[index] === "&") {
 				index++;
-				// File descriptor duplicate: 2>&1, <&-
 				while (index < command.length && /[0-9-]/.test(command[index])) index++;
 			} else {
 				isNextWordRedirectTarget = true;
@@ -286,7 +452,7 @@ export function parseShellCommand(command: string): ShellParseResult {
 
 		// Redirection: &> or &>>
 		if (char === "&" && command[index + 1] === ">") {
-			if (/^\d+$/.test(currentText)) {
+			if (/^\d+$/.test(currentText) && currentQuotes.length === 0) {
 				currentText = "";
 			} else {
 				flushWord();
@@ -317,46 +483,8 @@ export function parseShellCommand(command: string): ShellParseResult {
 		if (char === ";" || char === "\n") {
 			flushSegment();
 			index++;
-			// If we just hit a newline and there are pending heredocs, consume their bodies now!
 			if (char === "\n" && pendingHeredocs.length > 0) {
-				for (const heredoc of pendingHeredocs) {
-					let line = "";
-					while (index < command.length) {
-						if (command[index] === "\n") {
-							let compareLine = line.endsWith("\r") ? line.slice(0, -1) : line;
-							if (heredoc.stripTabs) {
-								compareLine = compareLine.replace(/^\t+/, "");
-							}
-							if (compareLine === heredoc.delimiter) {
-								index++; // consume \n
-								line = "";
-								break;
-							}
-							if (!heredoc.quoted) {
-								if (line.includes("$(") || line.includes("`")) {
-									complex = true;
-								}
-							}
-							line = "";
-						} else {
-							line += command[index];
-						}
-						index++;
-					}
-					// Check last line if stream ended without trailing newline
-					if (line.length > 0) {
-						let compareLine = line.endsWith("\r") ? line.slice(0, -1) : line;
-						if (heredoc.stripTabs) {
-							compareLine = compareLine.replace(/^\t+/, "");
-						}
-						if (compareLine !== heredoc.delimiter && !heredoc.quoted) {
-							if (line.includes("$(") || line.includes("`")) {
-								complex = true;
-							}
-						}
-					}
-				}
-				pendingHeredocs = [];
+				consumePendingHeredocs();
 			}
 			continue;
 		}
@@ -374,13 +502,8 @@ export function parseShellCommand(command: string): ShellParseResult {
 
 	flushSegment();
 
-	// Process any heredoc remaining at the end of input
 	if (pendingHeredocs.length > 0) {
-		for (const heredoc of pendingHeredocs) {
-			if (!heredoc.quoted) {
-				complex = true;
-			}
-		}
+		consumePendingHeredocs();
 	}
 
 	const legacySegments = parsedSegments.map(seg => seg.words.map(w => w.text));

@@ -55,46 +55,41 @@ Designed to be self-contained and dependency-free (`node:fs`, `node:path`, `node
 | File | Responsibility |
 | :--- | :--- |
 | `index.ts` | omp extension entrypoint (`tool_call` & `tool_result` hooks, interactive prompt flow, `/permissions` command, write-target checks) |
+| `evaluate.ts` | Pure command evaluation engine (calculates `allow` / `ask` / `deny` / `unmatched` verdicts and security check reasons) |
+| `hook.ts` | Cross-harness `PreToolUse` hook CLI for Claude Code and Devin CLI (enforces deny rules and hard checks; never approves) |
 | `parser.ts` | Single-pass shell lexer: quotes, escapes, redirections, heredocs, compound operators, substitution detection |
 | `normalizer.ts` | Canonical token extraction, global flag skipping, 1/2/3-word command prefix computation, prefix matching |
 | `rules.ts` | Hard security checks, workspace boundary resolution, protected-path detection, multi-level decision engine |
 | `store.ts` | Multi-harness JSON rule loader, deduplicated non-destructive writer, level builder |
-| `adapters.ts` | *(v2)* Canonical `Bash(<prefix> *)` / `Read(...)` / `Edit(...)` parser & serializer bridging Claude Code, Devin CLI, and omp |
+| `adapters.ts` | Cross-harness format translator between Claude Code, Devin CLI, and omp |
 | `types.ts` | Core TypeScript types (`PermissionRules`, `PermissionLevel`, `SegmentDecision`, `ShellParseResult`) |
-
 ---
 
 ## Rule Schema
 
-### Standardized Cross-Harness Format (Claude Code & Devin CLI Native)
+### Cross-Harness Grammar Across Claude Code, Devin CLI, and omp
 
-Both Claude Code (`.claude/settings.json`) and Devin CLI (`.devin/config.json`) natively consume the `permissions` object with `"Bash(<prefix> *)"` glob syntax:
+Claude Code and Devin CLI use distinct syntax matchers for rules:
+- **Claude Code** (`.claude/settings.json`): Uses `Bash(<prefix> *)` or `Bash(<prefix>)` for shell commands, `Read(<glob>)` for file reads, `Edit(<glob>)` for edits, and `mcp__*` for MCP tools.
+- **Devin CLI** (`.devin/config.json`): Uses `Exec(<prefix>)` for shell commands, `Read(<glob>)`, `Write(<glob>)`, `Fetch(<pattern>)`, and bare tool names (e.g. `exec`, `web_search`). Devin does **not** use `Bash(...)`.
+- **omp** (`.omp/permissions*.json`): Uses bare command prefixes in `allow`, `ask`, and `deny`.
 
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(git status *)",
-      "Bash(just check *)",
-      "Bash(bun test *)"
-    ],
-    "ask": [
-      "Bash(git push *)",
-      "Bash(rm *)"
-    ],
-    "deny": [
-      "Bash(sudo *)",
-      "Bash(rm -rf / *)",
-      "Read(**/.env)",
-      "Edit(~/.ssh/**)"
-    ]
-  },
-  "omp": {
-    "allowOutside": ["git status"],
-    "allowedPaths": ["/usr/local/share"]
-  }
-}
-```
+### Cross-Harness PreToolUse Hook (`hook.ts`)
+
+`hook.ts` serves as a unified `PreToolUse` hook registered in `~/.claude/settings.json` (and automatically imported by Devin CLI):
+- **Target matchers:** `^(Bash|exec)$`.
+- **Policy:** The hook **never approves** plain prefixes (leaving allow decisions to each harness's native rules and interactive prompts).
+- **Enforcement:** Enforces global deny rules and hard security checks (`bash -c`, `$()`, `git -c`, workspace escapes, protected paths) across Claude Code and Devin:
+  - **Claude Code:** Outputs `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny" | "ask", "permissionDecisionReason": "..."}}`.
+  - **Devin CLI:** Outputs `{"decision": "block", "reason": "..."}`.
+
+### Mirroring Scope
+
+Allowlist mirroring between `.claude`, `.devin`, and `.omp` is a convenience feature:
+- **Allow only:** Mirrors only `allow` command prefixes. Native `ask` and `deny` rules remain untouched in their original files and lists.
+- **Committed files are read-only:** The `project` scope (`.claude/settings.json`, `.devin/config.json`, `.omp/permissions.json`) is never modified by automatic background mirroring.
+- **Keyword protection:** `saveRule` refuses to save shell keywords or builtins (`continue`, `break`, `read`, `return`, `exit`, `local`, `export`, `set`, `true`, `false`, `:`).
+- **Safety preservation:** Non-prefix rules (`Read`, `Edit`, `Write`, `Fetch`, `WebFetch`, `mcp__*`, tool names) are preserved verbatim in their original files and lists and never crossed over.
 
 ### Legacy omp Format (`.omp/permissions*.json` — Backward Compatible)
 

@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { matchesPrefix } from "./normalizer.ts";
+import { matchesGlob } from "./adapters.ts";
+import { commandPrefix, matchesPrefix } from "./normalizer.ts";
 import type { ParsedWord, PermissionLevel, SegmentDecision } from "./types.ts";
 
 const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -11,6 +12,13 @@ const SHELL_INTERPRETERS: Record<string, true> = {
 	zsh: true,
 };
 const DANGEROUS_LONG_FLAG = /^--(output|exec(-batch)?|pre)(=|$)/;
+
+const realpathCache = new Map<string, string>();
+let lastCachedCwd = "";
+
+export function clearRealpathCache(): void {
+	realpathCache.clear();
+}
 
 export function looksLikePath(word: string): boolean {
 	if (word.includes("://")) return false;
@@ -38,11 +46,40 @@ export function isWithinRoot(target: string, root: string): boolean {
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-export function realpathOrSelf(directory: string): string {
+export function realpathOrSelf(directory: string, currentCwd?: string): string {
+	if (currentCwd && currentCwd !== lastCachedCwd) {
+		realpathCache.clear();
+		lastCachedCwd = currentCwd;
+	}
+	const cached = realpathCache.get(directory);
+	if (cached !== undefined) return cached;
+	let resolved: string;
 	try {
-		return fs.realpathSync(directory);
+		resolved = fs.realpathSync(directory);
 	} catch {
-		return directory;
+		resolved = directory;
+	}
+	if (realpathCache.size >= 512) {
+		realpathCache.clear();
+	}
+	realpathCache.set(directory, resolved);
+	return resolved;
+}
+
+export function getGitWorktreeRoots(cwd: string): string[] {
+	try {
+		const gitPath = path.join(cwd, ".git");
+		const stat = fs.statSync(gitPath, { throwIfNoEntry: false });
+		if (!stat || stat.isDirectory()) return [];
+		const content = fs.readFileSync(gitPath, "utf-8");
+		const match = content.match(/^gitdir:\s*(.+)$/m);
+		if (!match) return [];
+		const gitdir = path.resolve(cwd, match[1].trim());
+		const commonGitDir = path.resolve(gitdir, "../..");
+		const mainRepoRoot = path.dirname(commonGitDir);
+		return [gitdir, commonGitDir, mainRepoRoot, realpathOrSelf(mainRepoRoot, cwd)];
+	} catch {
+		return [];
 	}
 }
 
@@ -55,7 +92,18 @@ export function isProtectedPath(resolved: string, cwd: string, home: string): bo
 	const projectLocalPerms = path.resolve(cwd, ".omp", "permissions.local.json");
 	if (normalized === projectPerms || normalized === projectLocalPerms) return true;
 
-	const realCwd = realpathOrSelf(cwd);
+	const gitDirsToCheck: string[] = [path.resolve(cwd, ".git")];
+	const worktreeRoots = getGitWorktreeRoots(cwd);
+	if (worktreeRoots.length >= 2) {
+		gitDirsToCheck.push(worktreeRoots[0]);
+		gitDirsToCheck.push(worktreeRoots[1]);
+	}
+	for (const gitDir of gitDirsToCheck) {
+		if (isWithinRoot(normalized, path.join(gitDir, "hooks"))) return true;
+		if (normalized === path.join(gitDir, "config")) return true;
+	}
+
+	const realCwd = realpathOrSelf(cwd, cwd);
 	if (realCwd !== cwd) {
 		if (
 			normalized === path.resolve(realCwd, ".omp", "permissions.json") ||
@@ -65,16 +113,21 @@ export function isProtectedPath(resolved: string, cwd: string, home: string): bo
 		}
 	}
 
-	const realHome = realpathOrSelf(home);
+	const realHome = realpathOrSelf(home, cwd);
 	if (realHome !== home && isWithinRoot(normalized, path.resolve(realHome, ".omp", "agent"))) {
 		return true;
 	}
 
-	const realTarget = realpathOrSelf(normalized);
+	const realTarget = realpathOrSelf(normalized, cwd);
 	if (realTarget !== normalized) {
 		if (isWithinRoot(realTarget, agentDir)) return true;
 		if (realHome !== home && isWithinRoot(realTarget, path.resolve(realHome, ".omp", "agent"))) return true;
 		if (realTarget === projectPerms || realTarget === projectLocalPerms) return true;
+		for (const gitDir of gitDirsToCheck) {
+			const realGitDir = realpathOrSelf(gitDir, cwd);
+			if (isWithinRoot(realTarget, path.join(realGitDir, "hooks"))) return true;
+			if (realTarget === path.join(realGitDir, "config")) return true;
+		}
 		if (realCwd !== cwd) {
 			if (
 				realTarget === path.resolve(realCwd, ".omp", "permissions.json") ||
@@ -89,11 +142,24 @@ export function isProtectedPath(resolved: string, cwd: string, home: string): bo
 }
 
 export function workspaceRoots(cwd: string, home: string, extraRoots: string[] = []): string[] {
-	return [cwd, realpathOrSelf(cwd), path.join(home, ".omp", "scratch"), ...extraRoots];
+	const worktreeRoots = getGitWorktreeRoots(cwd);
+	const roots = [
+		cwd,
+		realpathOrSelf(cwd, cwd),
+		path.join(home, ".omp", "scratch"),
+		...worktreeRoots,
+		...extraRoots,
+	];
+	return [...new Set(roots)];
 }
 
 export function isWithinRoots(target: string, roots: string[]): boolean {
-	return roots.some(root => isWithinRoot(target, root));
+	return roots.some(root => {
+		if (root.includes("*") || root.includes("?")) {
+			return matchesGlob(root, target);
+		}
+		return isWithinRoot(target, root);
+	});
 }
 
 function hasShellDashC(words: string[]): boolean {
@@ -130,7 +196,6 @@ export function hardCheckReason(
 	if (first === "fd" && rawWords.some(word => word === "-x" || word === "-X")) return "fd -x/-X";
 	if (first === "git" && (rawWords[1] === "-c" || rawWords.some(w => w.startsWith("--config-env")))) return "git -c";
 
-	// Convert inputWords into candidate objects with metadata
 	type Candidate = {
 		text: string;
 		isRedirectTarget?: boolean;
@@ -162,9 +227,7 @@ export function hardCheckReason(
 	// 1. Protected path check: runs for ALL candidates
 	for (const cand of candidates) {
 		if (cand.text.startsWith("-") || cand.text.length === 0) continue;
-		// Skip template literals unless explicitly a redirection target
 		if (cand.hasTemplate && !cand.isRedirectTarget) continue;
-		// Skip single-quoted literals that don't look like concrete paths
 		if (cand.quote === "'" && !cand.isRedirectTarget && !cand.text.startsWith("/") && !cand.text.startsWith(".")) {
 			continue;
 		}
@@ -181,9 +244,7 @@ export function hardCheckReason(
 		const roots = workspaceRoots(cwd, home, extraRoots);
 		for (const cand of candidates) {
 			if (cand.text.startsWith("-") || cand.text.length === 0) continue;
-			// Ignore template expressions in arguments
 			if (cand.hasTemplate && !cand.isRedirectTarget) continue;
-			// Single-quoted strings in bash do not expand $HOME or ~
 			if (cand.quote === "'" && !cand.isRedirectTarget && !cand.text.startsWith("/") && !cand.text.startsWith(".")) {
 				continue;
 			}
@@ -220,7 +281,23 @@ export function decideSegment(
 	const extraRoots = levels.flatMap(l => (l.rules.allowedPaths ?? []).map(p => resolvePathWord(p, cwd, home)));
 	const hardReason = hardCheckReason(words, cwd, home, allowOutsideRules, extraRoots);
 	if (hardReason !== undefined) {
-		return { kind: "ask", rule: hardReason, persistable: false };
+		const prefix = commandPrefix(words);
+		let isAllowedPrefix = false;
+		for (const level of levels) {
+			if (level.rules.allow.some(r => matchesPrefix(words, r))) {
+				isAllowedPrefix = true;
+				break;
+			}
+		}
+		const decision: SegmentDecision = {
+			kind: "ask",
+			rule: hardReason,
+			persistable: false,
+		};
+		if (hardReason.startsWith("path outside workspace:") && !isAllowedPrefix && prefix) {
+			decision.unapprovedPrefix = prefix;
+		}
+		return decision;
 	}
 
 	// 3. Allow vs Ask precedence
@@ -228,7 +305,7 @@ export function decideSegment(
 		let allowLength = -1;
 		let askLength = -1;
 		let askRule = "";
-		const allowRules = level.name === "project" ? [] : level.rules.allow;
+		const allowRules = level.rules.allow;
 		for (const rule of allowRules) {
 			if (matchesPrefix(words, rule)) {
 				allowLength = Math.max(allowLength, rule.split(/\s+/).length);

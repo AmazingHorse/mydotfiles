@@ -74,9 +74,16 @@
     "diff",
     "comm",
     "sha256sum",
-    "shasum"
+    "shasum",
+    "wt list",
+    "wt status",
+    "wt step diff",
+    "wt step copy-ignored",
+    "wt config state"
   ],
   "ask": [
+    "wt merge",
+    "wt remove",
     "sudo",
     "doas",
     "rm",

@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, ToolCallEventResult } from "@oh-my-pi/pi-coding-agent";
 import * as os from "node:os";
 import * as path from "node:path";
+import { type CommandVerdict, decisionReason, evaluateCommand } from "./evaluate.ts";
 import { commandPrefix, matchesPrefix } from "./normalizer.ts";
 import { parseShellCommand, splitShellSegments } from "./parser.ts";
 import {
@@ -14,9 +15,12 @@ import {
 import {
 	appendRuleEntries,
 	defaultsPath,
+	flushPendingMirrors,
 	loadPermissionLevels,
 	projectLocalPath,
 	projectPath,
+	savePathRule,
+	saveRule,
 	userPath,
 } from "./store.ts";
 import type {
@@ -32,7 +36,10 @@ export {
 	appendRuleEntries,
 	commandPrefix,
 	decideSegment,
+	decisionReason,
 	defaultsPath,
+	evaluateCommand,
+	flushPendingMirrors,
 	hardCheckReason,
 	isProtectedPath,
 	loadPermissionLevels,
@@ -41,8 +48,11 @@ export {
 	projectLocalPath,
 	projectPath,
 	resolvePathWord,
+	savePathRule,
+	saveRule,
 	splitShellSegments,
 	userPath,
+	workspaceRoots,
 };
 export type {
 	ParsedSegment,
@@ -51,158 +61,255 @@ export type {
 	PermissionRules,
 	SegmentDecision,
 	ShellParseResult,
+	CommandVerdict,
 };
 
 const KEEP_RECENT_MESSAGES = 6;
 const TRUNCATE_THRESHOLD = 800;
 const TRUNCATE_TO = 400;
 const TRUNCATION_MARKER = "[command-guard: truncated ";
-const FILE_WRITE_TOOLS = new Set(["write", "edit", "ast_edit"]);
-const AGENT_SCRATCH_ROOT = path.join(os.homedir(), ".omp", "scratch");
+const FILE_WRITE_TOOLS: Record<string, true> = {
+	write: true,
+	edit: true,
+	ast_edit: true,
+};
 
-function decisionReason(decision: SegmentDecision): string {
-	if (decision.kind === "ask") return decision.persistable ? `ask rule: ${decision.rule}` : decision.rule;
-	if (decision.kind === "unmatched") return "unmatched";
-	if (decision.kind === "deny") return `deny rule: ${decision.rule}`;
-	return "allowed";
+// Hoisted module-level session state across subagents and sibling instances
+const sessionAllow = new Set<string>();
+const sessionAllowOutside = new Set<string>();
+const sessionAllowedPaths = new Set<string>();
+const sessionWriteDirs = new Set<string>();
+
+export function clearSessionState(): void {
+	sessionAllow.clear();
+	sessionAllowOutside.clear();
+	sessionAllowedPaths.clear();
+	sessionWriteDirs.clear();
 }
+
+class AsyncMutex {
+	private queue: Array<() => void> = [];
+	private locked = false;
+
+	async lock(): Promise<() => void> {
+		if (!this.locked) {
+			this.locked = true;
+			return () => this.unlock();
+		}
+		const { promise, resolve } = Promise.withResolvers<() => void>();
+		this.queue.push(() => resolve(() => this.unlock()));
+		return promise;
+	}
+
+	private unlock(): void {
+		const next = this.queue.shift();
+		if (next) {
+			next();
+		} else {
+			this.locked = false;
+		}
+	}
+
+	async runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+		const release = await this.lock();
+		try {
+			return await fn();
+		} finally {
+			release();
+		}
+	}
+}
+
+const approvalMutex = new AsyncMutex();
+
 
 async function handleBashCall(
 	input: { command?: unknown; cwd?: unknown },
 	ctx: ExtensionContext,
-	sessionAllow: Set<string>,
-	sessionAllowOutside: Set<string>,
-	sessionAllowedPaths: Set<string>,
 ): Promise<ToolCallEventResult | void> {
-	const command = typeof input.command === "string" ? input.command : "";
+	if (typeof input.command !== "string") return;
+	const command = input.command;
+	const cwd = typeof input.cwd === "string" ? path.resolve(ctx.cwd, input.cwd) : ctx.cwd;
 	const home = os.homedir();
-	const cwd = ctx.cwd;
-	const { parsedSegments, complex } = parseShellCommand(command);
-	const levels = loadPermissionLevels(cwd, home, sessionAllow, sessionAllowOutside, sessionAllowedPaths);
-	const extraRoots = levels.flatMap(l => (l.rules.allowedPaths ?? []).map(p => resolvePathWord(p, cwd, home)));
 
-	const decisions = parsedSegments.map(seg => ({
-		words: seg.words,
-		decision: decideSegment(seg.words, levels, cwd, home),
-	}));
-	const pendingDecisions: SegmentDecision[] = [];
-
-	if (typeof input.cwd === "string" && input.cwd.length > 0 && !input.cwd.includes("://")) {
-		const resolvedCwd = resolvePathWord(input.cwd, cwd, home);
-		if (!isWithinRoots(resolvedCwd, workspaceRoots(cwd, home, extraRoots))) {
+	const evaluateDecisions = () => {
+		const levels = loadPermissionLevels(cwd, home, sessionAllow, sessionAllowOutside, sessionAllowedPaths);
+		const verdict = evaluateCommand(command, cwd, home, levels);
+		const denied = verdict.decisions.find(d => d.decision.kind === "deny");
+		const pendingDecisions: SegmentDecision[] = [];
+		if (verdict.complex) {
 			pendingDecisions.push({
 				kind: "ask",
-				rule: `bash cwd outside workspace: ${input.cwd}`,
+				rule: "complex shell syntax (command substitution, redirections, or multiline flow)",
 				persistable: false,
 			});
 		}
-	}
-
-	const denied = decisions.find(entry => entry.decision.kind === "deny");
-	if (denied && denied.decision.kind === "deny") {
-		return { block: true, reason: `command-guard: denied by rule "${denied.decision.rule}": ${command}` };
-	}
-
-	for (const entry of decisions) {
-		if (entry.decision.kind !== "allow") pendingDecisions.push(entry.decision);
-	}
-
-	if (pendingDecisions.length === 0 && !complex) return;
-
-	const reasons = [...new Set(pendingDecisions.map(decisionReason))];
-	if (complex) reasons.push("command substitution or shell expansion");
-	const why = reasons.join("; ");
-
-	if (!ctx.hasUI) {
+		for (const entry of verdict.decisions) {
+			if (entry.decision.kind === "ask" || entry.decision.kind === "unmatched") {
+				pendingDecisions.push(entry.decision);
+			}
+		}
 		return {
-			block: true,
-			reason: `command-guard: needs approval (${why}); no UI available. Add an allow rule to .omp/permissions.local.json or ~/.omp/agent/permissions.json.`,
+			levels,
+			verdict,
+			parsedSegments: verdict.decisions.map(d => ({ words: d.words })),
+			complex: verdict.complex,
+			decisions: verdict.decisions,
+			denied,
+			pendingDecisions,
 		};
+	};
+
+	// Fast path check without mutex
+	const initial = evaluateDecisions();
+	if (initial.denied) {
+		const reason = decisionReason(initial.denied.decision);
+		return { block: true, reason: `Blocked by command-guard: ${reason}` };
+	}
+	if (initial.pendingDecisions.length === 0) {
+		return;
 	}
 
-	const hasProtected = pendingDecisions.some(
-		d => d.kind === "ask" && d.rule.startsWith("protected agent config:"),
-	);
-	const hasOutside = pendingDecisions.some(
-		d => d.kind === "ask" && (d.rule.startsWith("path outside workspace:") || d.rule.startsWith("bash cwd outside workspace:")),
-	);
-	const normalPersistable =
-		!complex &&
-		!hasProtected &&
-		!hasOutside &&
-		pendingDecisions.length > 0 &&
-		pendingDecisions.every(
-			decision => (decision.kind === "ask" || decision.kind === "unmatched") && decision.persistable,
+	// Prompt required: serialize with approval mutex to prevent parallel racing
+	return await approvalMutex.runExclusive(async () => {
+		// Re-evaluate within lock in case sibling parallel tool call already approved
+		const fresh = evaluateDecisions();
+		if (fresh.denied) {
+			const reason = decisionReason(fresh.denied.decision);
+			return { block: true, reason: `Blocked by command-guard: ${reason}` };
+		}
+		if (fresh.pendingDecisions.length === 0) {
+			return;
+		}
+
+		const why = fresh.pendingDecisions.map(d => decisionReason(d)).join("; ");
+		const hasProtected = fresh.pendingDecisions.some(
+			d => d.kind === "ask" && d.rule.startsWith("protected agent config:"),
+		);
+		const hasOutside = fresh.pendingDecisions.some(
+			d => d.kind === "ask" && (d.rule.startsWith("path outside workspace:") || Boolean(d.outsidePaths?.length)),
 		);
 
-	const prefixes = [
-		...new Set(
-			decisions
-				.filter(entry => entry.decision.kind !== "allow")
-				.map(entry => commandPrefix(entry.words))
-				.filter(prefix => prefix.length > 0),
-		),
-	];
-
-	const onceLabel = "Yes, once";
-	const noLabel = "No";
-	const sessionLabel = `Yes, for this session: ${prefixes.join(", ")}`;
-	const projectLabel = `Yes, always in this project: ${prefixes.join(", ")}`;
-	const globalLabel = `Yes, always in all projects: ${prefixes.join(", ")}`;
-
-	const sessionOutsideLabel = `Yes, for this session: allow ${prefixes.join(", ")} outside workspace`;
-	const projectOutsideLabel = `Yes, always in this project: allow ${prefixes.join(", ")} outside workspace`;
-	const globalOutsideLabel = `Yes, always in all projects: allow ${prefixes.join(", ")} outside workspace`;
-
-	let options = [onceLabel, noLabel];
-	if (!complex && !hasProtected && prefixes.length > 0) {
-		if (hasOutside) {
-			options = [onceLabel, sessionOutsideLabel, projectOutsideLabel, globalOutsideLabel, noLabel];
-		} else if (normalPersistable) {
-			options = [onceLabel, sessionLabel, projectLabel, globalLabel, noLabel];
+		const outsideDirs: string[] = [];
+		for (const d of fresh.pendingDecisions) {
+			if (d.kind === "ask" && d.outsidePaths) {
+				for (const p of d.outsidePaths) {
+					outsideDirs.push(path.dirname(resolvePathWord(p, cwd, home)));
+				}
+			}
 		}
-	}
+		const uniqueOutsideDirs = [...new Set(outsideDirs)];
 
-	const choice = await ctx.ui.select(`Run command?\n${command}\n${why}`, options);
-	if (choice === onceLabel) return;
-	if (choice === sessionLabel) {
-		for (const prefix of prefixes) sessionAllow.add(prefix);
-		return;
-	}
-	if (choice === projectLabel) {
-		appendRuleEntries(projectLocalPath(cwd), "allow", prefixes);
-		return;
-	}
-	if (choice === globalLabel) {
-		appendRuleEntries(userPath(home), "allow", prefixes);
-		return;
-	}
-	if (choice === sessionOutsideLabel) {
-		for (const prefix of prefixes) {
-			sessionAllow.add(prefix);
-			sessionAllowOutside.add(prefix);
+		const normalPersistable =
+			!fresh.complex &&
+			!hasProtected &&
+			!hasOutside &&
+			fresh.pendingDecisions.length > 0 &&
+			fresh.pendingDecisions.every(
+				decision => (decision.kind === "ask" || decision.kind === "unmatched") && decision.persistable,
+			);
+
+		const prefixes = [
+			...new Set(
+				fresh.decisions
+					.filter(entry => entry.decision.kind !== "allow")
+					.map(entry => commandPrefix(entry.words))
+					.filter(prefix => prefix.length > 0),
+			),
+		];
+
+		const onceLabel = "Yes, once";
+		const noLabel = "No";
+		const sessionLabel = `Yes, for this session: ${prefixes.join(", ")}`;
+		const projectLabel = `Yes, always in this project: ${prefixes.join(", ")}`;
+		const globalLabel = `Yes, always in all projects: ${prefixes.join(", ")}`;
+
+		const sessionOutsideLabel = `Yes, for this session: allow ${prefixes.join(", ")} outside workspace`;
+		const projectOutsideLabel = `Yes, always in this project: allow ${prefixes.join(", ")} outside workspace`;
+		const globalOutsideLabel = `Yes, always in all projects: allow ${prefixes.join(", ")} outside workspace`;
+
+		let options = [onceLabel];
+		if (!fresh.complex && !hasProtected && prefixes.length > 0) {
+			if (hasOutside) {
+				options.push(sessionOutsideLabel, projectOutsideLabel, globalOutsideLabel);
+				for (const dir of uniqueOutsideDirs) {
+					options.push(`Trust directory ${dir} (session)`);
+					options.push(`Trust directory ${dir} (save to project-local)`);
+				}
+			} else if (normalPersistable) {
+				options.push(sessionLabel, projectLabel, globalLabel);
+			}
 		}
-		return;
-	}
-	if (choice === projectOutsideLabel) {
-		appendRuleEntries(projectLocalPath(cwd), "allow", prefixes);
-		appendRuleEntries(projectLocalPath(cwd), "allowOutside", prefixes);
-		for (const prefix of prefixes) {
-			sessionAllow.add(prefix);
-			sessionAllowOutside.add(prefix);
+		options.push(noLabel);
+
+		const choice = await ctx.ui.select(`Run command?\n${command}\n${why}`, options);
+		if (choice === onceLabel) return;
+
+		if (choice === sessionLabel) {
+			for (const prefix of prefixes) sessionAllow.add(prefix);
+			if (hasOutside) {
+				for (const prefix of prefixes) sessionAllowOutside.add(prefix);
+			}
+			return;
 		}
-		return;
-	}
-	if (choice === globalOutsideLabel) {
-		appendRuleEntries(userPath(home), "allow", prefixes);
-		appendRuleEntries(userPath(home), "allowOutside", prefixes);
-		for (const prefix of prefixes) {
-			sessionAllow.add(prefix);
-			sessionAllowOutside.add(prefix);
+		if (choice === projectLabel) {
+			for (const prefix of prefixes) {
+				sessionAllow.add(prefix);
+				await saveRule("projectLocal", "allow", prefix, cwd, home);
+			}
+			return;
 		}
-		return;
-	}
-	return { block: true, reason: `User denied: ${command}` };
+		if (choice === globalLabel) {
+			for (const prefix of prefixes) {
+				sessionAllow.add(prefix);
+				await saveRule("user", "allow", prefix, cwd, home);
+			}
+			return;
+		}
+		if (choice === sessionOutsideLabel) {
+			for (const prefix of prefixes) {
+				sessionAllow.add(prefix);
+				sessionAllowOutside.add(prefix);
+			}
+			return;
+		}
+		if (choice === projectOutsideLabel) {
+			for (const prefix of prefixes) {
+				sessionAllow.add(prefix);
+				sessionAllowOutside.add(prefix);
+				await saveRule("projectLocal", "allow", prefix, cwd, home);
+				await saveRule("projectLocal", "allowOutside", prefix, cwd, home);
+			}
+			return;
+		}
+		if (choice === globalOutsideLabel) {
+			for (const prefix of prefixes) {
+				sessionAllow.add(prefix);
+				sessionAllowOutside.add(prefix);
+				await saveRule("user", "allow", prefix, cwd, home);
+				await saveRule("user", "allowOutside", prefix, cwd, home);
+			}
+			return;
+		}
+
+		for (const dir of uniqueOutsideDirs) {
+			if (choice === `Trust directory ${dir} (session)`) {
+				sessionAllowedPaths.add(dir);
+				sessionWriteDirs.add(dir);
+				for (const prefix of prefixes) sessionAllow.add(prefix);
+				return;
+			}
+			if (choice === `Trust directory ${dir} (save to project-local)`) {
+				sessionAllowedPaths.add(dir);
+				sessionWriteDirs.add(dir);
+				for (const prefix of prefixes) sessionAllow.add(prefix);
+				await savePathRule("projectLocal", dir, cwd, home);
+				return;
+			}
+		}
+
+		return { block: true, reason: `User denied: ${command}` };
+	});
 }
 
 function compactToolResult(message: unknown): unknown {
@@ -272,7 +379,7 @@ function resolveTargetPath(rawPath: string, cwd: string): string | undefined {
 }
 
 function collectWriteTargets(toolName: string, input: Record<string, unknown>): string[] {
-	if (!FILE_WRITE_TOOLS.has(toolName)) return [];
+	if (!FILE_WRITE_TOOLS[toolName]) return [];
 	const targets: string[] = [];
 	if (typeof input.path === "string") targets.push(input.path);
 	if (Array.isArray(input.paths)) {
@@ -282,129 +389,110 @@ function collectWriteTargets(toolName: string, input: Record<string, unknown>): 
 }
 
 export default function (pi: ExtensionAPI) {
-	const sessionAllow = new Set<string>();
-	const sessionAllowOutside = new Set<string>();
-	const sessionAllowedPaths = new Set<string>();
-	const sessionWriteDirs = new Set<string>();
-
-	pi.on("session_start", (_event, ctx) => {
-		if (ctx.hasUI) {
-			ctx.ui.notify("command-guard: permission shim active");
-		}
-	});
-
 	pi.on("tool_call", async (event, ctx) => {
 		if (event.toolName === "bash") {
-			return await handleBashCall(event.input, ctx, sessionAllow, sessionAllowOutside, sessionAllowedPaths);
+			return handleBashCall(event.input as { command?: unknown; cwd?: unknown }, ctx);
 		}
 
-		const rawTargets = collectWriteTargets(event.toolName, event.input as Record<string, unknown>);
+		if (!FILE_WRITE_TOOLS[event.toolName]) return;
+
+		const rawTargets = collectWriteTargets(event.toolName, (event.input ?? {}) as Record<string, unknown>);
 		if (rawTargets.length === 0) return;
 
 		const home = os.homedir();
-		const resolvedTargets = rawTargets
-			.map(rawTarget => resolveTargetPath(rawTarget, ctx.cwd))
-			.filter((target): target is string => target !== undefined);
+		const resolvedTargets = [
+			...new Set(
+				rawTargets
+					.map(target => resolveTargetPath(target, ctx.cwd))
+					.filter((target): target is string => typeof target === "string"),
+			),
+		];
+		if (resolvedTargets.length === 0) return;
 
-		const protectedTargets = resolvedTargets.filter(target => isProtectedPath(target, ctx.cwd, home));
-		if (protectedTargets.length > 0) {
-			const summary = `${event.toolName} targets protected agent config:\n${protectedTargets.join("\n")}`;
-			if (!ctx.hasUI) {
+		for (const target of resolvedTargets) {
+			if (isProtectedPath(target, ctx.cwd, home)) {
 				return {
 					block: true,
-					reason: `command-guard: ${summary}\nNo UI to confirm; ask the user to run it.`,
+					reason: `Blocked by command-guard: write target is a protected configuration path (${target})`,
 				};
 			}
-			const onceLabel = "Yes, once";
-			const choice = await ctx.ui.select(`Protected agent config operation\n${summary}`, [
-				onceLabel,
-				"No",
-			]);
-			if (choice === onceLabel) return;
-			return { block: true, reason: `command-guard: user declined ${summary}` };
 		}
 
 		const levels = loadPermissionLevels(ctx.cwd, home, sessionAllow, sessionAllowOutside, sessionAllowedPaths);
-		const persistentAllowedPaths = levels.flatMap(l => (l.rules.allowedPaths ?? []).map(p => resolvePathWord(p, ctx.cwd, home)));
-		const allowedRoots = [
-			ctx.cwd,
-			os.homedir(),
-			AGENT_SCRATCH_ROOT,
-			...persistentAllowedPaths,
+		const configuredAllowedPaths = levels.flatMap(l =>
+			(l.rules.allowedPaths ?? []).map(p => resolvePathWord(p, ctx.cwd, home)),
+		);
+		const configuredWriteRules = levels.flatMap(l => l.rules.writeRules ?? []);
+
+		const roots = workspaceRoots(ctx.cwd, home, [
 			...sessionAllowedPaths,
 			...sessionWriteDirs,
-		];
-		const outsideTargets = resolvedTargets.filter(target => !isWithinRoots(target, allowedRoots));
+			...configuredAllowedPaths,
+			...configuredWriteRules,
+		]);
+
+		const outsideTargets = resolvedTargets.filter(target => !isWithinRoots(target, roots));
 		if (outsideTargets.length === 0) return;
 
 		const outsideDirs = [...new Set(outsideTargets.map(target => path.dirname(target)))];
 		if (outsideDirs.every(dir => sessionWriteDirs.has(dir))) return;
 
-		const summary = `${event.toolName} targets outside workspace ${ctx.cwd}:\n${outsideTargets.join("\n")}`;
-		if (!ctx.hasUI) {
-			return { block: true, reason: `command-guard: ${summary}\nNo UI to confirm; ask the user to run it.` };
-		}
-		const onceLabel = "Yes, once";
-		const sessionLabel = `Yes, for this session: ${outsideDirs.join(", ")}`;
-		const projectLabel = `Yes, always in this project: ${outsideDirs.join(", ")}`;
-		const globalLabel = `Yes, always in all projects: ${outsideDirs.join(", ")}`;
-		const choice = await ctx.ui.select(`Out-of-workspace operation\n${summary}`, [
-			onceLabel,
-			sessionLabel,
-			projectLabel,
-			globalLabel,
-			"No",
-		]);
-		if (choice === onceLabel) return;
-		if (choice === sessionLabel) {
-			for (const dir of outsideDirs) sessionWriteDirs.add(dir);
-			return;
-		}
-		if (choice === projectLabel) {
-			appendRuleEntries(projectLocalPath(ctx.cwd), "allowedPaths", outsideDirs);
-			for (const dir of outsideDirs) sessionWriteDirs.add(dir);
-			return;
-		}
-		if (choice === globalLabel) {
-			appendRuleEntries(userPath(home), "allowedPaths", outsideDirs);
-			for (const dir of outsideDirs) sessionWriteDirs.add(dir);
-			return;
-		}
-		return { block: true, reason: `command-guard: user declined ${summary}` };
-	});
+		return await approvalMutex.runExclusive(async () => {
+			const freshRoots = workspaceRoots(ctx.cwd, home, [
+				...sessionAllowedPaths,
+				...sessionWriteDirs,
+				...configuredAllowedPaths,
+				...configuredWriteRules,
+			]);
+			const stillOutside = outsideTargets.filter(target => !isWithinRoots(target, freshRoots));
+			if (stillOutside.length === 0) return;
 
-	pi.on("context", event => {
-		const cutoff = Math.max(0, event.messages.length - KEEP_RECENT_MESSAGES);
-		const messages = event.messages.map((message, index) =>
-			index < cutoff ? (compactToolResult(message) as typeof message) : message,
-		);
-		return { messages };
-	});
+			const dirs = [...new Set(stillOutside.map(target => path.dirname(target)))];
+			if (dirs.every(dir => sessionWriteDirs.has(dir))) return;
 
-	const parameters = pi.zod.object({
-		query: pi.zod.string().describe("The research or planning question for Antigravity."),
-	});
-	pi.registerTool<typeof parameters>({
-		name: "agy_query",
-		label: "Antigravity query",
-		description:
-			"Ask Antigravity (read-only plan mode, prepaid Google credits) for web research or a second-opinion plan.",
-		parameters,
-		async execute(_toolCallId: string, params: { query: string }, signal?: AbortSignal) {
-			const result = await pi.exec("agy", ["--mode", "plan", "--print", params.query], {
-				signal,
-				timeout: 120_000,
-			});
-			if (result.code !== 0 || result.killed) {
-				const stderr = result.stderr.slice(0, 400);
-				throw new Error(
-					`agy_query failed with code ${result.code}${result.killed ? " (killed)" : ""}: ${stderr}`,
-				);
+			const onceLabel = "Yes, once";
+			const noLabel = "No";
+			const options = [onceLabel];
+			for (const dir of dirs) {
+				options.push(`Trust directory ${dir} (session)`);
+				options.push(`Trust directory ${dir} (save to project-local)`);
+			}
+			options.push(noLabel);
+
+			const summary = `${event.toolName} targets outside workspace:\n${stillOutside.join("\n")}`;
+			const choice = await ctx.ui.select(`Allow file modification?\n${summary}`, options);
+
+			if (choice === onceLabel) return;
+			for (const dir of dirs) {
+				if (choice === `Trust directory ${dir} (session)`) {
+					sessionWriteDirs.add(dir);
+					sessionAllowedPaths.add(dir);
+					return;
+				}
+				if (choice === `Trust directory ${dir} (save to project-local)`) {
+					sessionWriteDirs.add(dir);
+					sessionAllowedPaths.add(dir);
+					await savePathRule("projectLocal", dir, ctx.cwd, home);
+					return;
+				}
 			}
 			return {
-				content: [{ type: "text", text: result.stdout }],
-				details: { exitCode: result.code },
+				block: true,
+				reason: `Blocked by command-guard: write target outside workspace (${stillOutside[0]})`,
 			};
-		},
+		});
+	});
+
+	pi.on("context", async event => {
+		const messages = event.messages;
+		if (messages.length <= KEEP_RECENT_MESSAGES) return;
+
+		const cutoff = messages.length - KEEP_RECENT_MESSAGES;
+		const compacted = messages.map((msg, index) => {
+			if (index >= cutoff) return msg;
+			return compactToolResult(msg);
+		});
+
+		return { messages: compacted };
 	});
 }

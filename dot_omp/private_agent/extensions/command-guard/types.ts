@@ -4,6 +4,9 @@ export type PermissionRules = {
 	deny: string[];
 	allowOutside?: string[];
 	allowedPaths?: string[];
+	readRules?: string[];
+	writeRules?: string[];
+	mcpRules?: string[];
 };
 
 export type PermissionLevel = {
@@ -14,8 +17,14 @@ export type PermissionLevel = {
 export type SegmentDecision =
 	| { kind: "allow" }
 	| { kind: "deny"; rule: string }
-	| { kind: "ask"; rule: string; persistable: boolean }
-	| { kind: "unmatched"; persistable: boolean };
+	| {
+			kind: "ask";
+			rule: string;
+			persistable: boolean;
+			unapprovedPrefix?: string;
+			outsidePaths?: string[];
+	  }
+	| { kind: "unmatched"; persistable: boolean; unapprovedPrefix?: string };
 
 export type ParsedWord = {
 	text: string;

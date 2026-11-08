@@ -247,9 +247,8 @@ echo "==> Verify Renovate configuration"
 python3 -m json.tool .github/renovate.json >/dev/null
 if command -v bun >/dev/null 2>&1; then
     bun -e '
-        const fs = require("fs");
-        const conf = JSON.parse(fs.readFileSync(".github/renovate.json", "utf8"));
-        const data = fs.readFileSync(".chezmoidata.toml", "utf8");
+        const conf = await Bun.file(".github/renovate.json").json();
+        const data = await Bun.file(".chezmoidata.toml").text();
         const matchStr = conf.customManagers[0].matchStrings[0];
         const regex = new RegExp(matchStr, "g");
         const matches = [...data.matchAll(regex)];
@@ -257,7 +256,7 @@ if command -v bun >/dev/null 2>&1; then
             console.error(`Expected at least 5 Renovate pin matches, got ${matches.length}`);
             process.exit(1);
         }
-        const bootstrap = fs.readFileSync("scripts/bootstrap.sh", "utf8");
+        const bootstrap = await Bun.file("scripts/bootstrap.sh").text();
         const bootstrapMatches = [...bootstrap.matchAll(regex)];
         if (bootstrapMatches.length !== 1) {
             console.error(`Expected 1 Renovate pin match in scripts/bootstrap.sh, got ${bootstrapMatches.length}`);

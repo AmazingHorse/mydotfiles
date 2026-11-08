@@ -16,9 +16,8 @@ export const SUBCOMMAND_TOOLS: Record<string, true> = {
 	uv: true,
 	just: true,
 	pip: true,
-	python: true,
-	python3: true,
 	npx: true,
+	wt: true,
 };
 
 export const THREE_WORD_PREFIXES: Record<string, true> = {
@@ -29,6 +28,8 @@ export const THREE_WORD_PREFIXES: Record<string, true> = {
 	"uv run": true,
 	"python -m": true,
 	"python3 -m": true,
+	"wt step": true,
+	"wt config": true,
 };
 
 // Known global flags that take a separate argument
@@ -72,6 +73,11 @@ const VALUE_FLAGS_BY_TOOL: Record<string, Record<string, true>> = {
 		"--cluster": true,
 		"--user": true,
 	},
+	wt: {
+		"-C": true,
+		"--config": true,
+		"--base": true,
+	},
 };
 
 // Known global boolean/standalone flags
@@ -106,6 +112,17 @@ const BOOL_FLAGS_BY_TOOL: Record<string, Record<string, true>> = {
 		"--no-dotenv": true,
 		"--unsorted": true,
 		"--unstable": true,
+	},
+	wt: {
+		"-v": true,
+		"--verbose": true,
+		"-q": true,
+		"--quiet": true,
+		"--yes": true,
+		"-y": true,
+		"--no-cd": true,
+		"-c": true,
+		"--create": true,
 	},
 };
 

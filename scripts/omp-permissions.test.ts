@@ -1,17 +1,33 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+	fromClaudePermissions,
+	fromDevinPermissions,
+	matchesGlob,
+	toClaudePermissions,
+	toDevinPermissions,
+} from "../dot_omp/private_agent/extensions/command-guard/adapters.ts";
+import {
+	clearSessionState,
 	commandPrefix,
 	decideSegment,
+	flushPendingMirrors,
+	evaluateCommand,
 	isProtectedPath,
+	loadPermissionLevels,
 	matchesPrefix,
 	parseShellCommand,
+	saveRule,
 	splitShellSegments,
-	type PermissionLevel,
+	workspaceRoots,
 	type PermissionRules,
 } from "../dot_omp/private_agent/extensions/command-guard/index.ts";
+import {
+	clearScopeCache,
+	getScopeRules,
+} from "../dot_omp/private_agent/extensions/command-guard/store.ts";
 
 const CWD = "/work/repo";
 const HOME = "/home/u";
@@ -23,7 +39,7 @@ const defaultsPath = join(
 	"private_agent",
 	"permissions.defaults.json",
 );
-const defaultsRules = JSON.parse(readFileSync(defaultsPath, "utf8")) as PermissionRules;
+const defaultsRules = (await Bun.file(defaultsPath).json()) as PermissionRules;
 const defaultsLevel: PermissionLevel = { name: "defaults", rules: defaultsRules };
 const emptyRules: PermissionRules = { allow: [], ask: [], deny: [] };
 
@@ -238,15 +254,13 @@ describe("decideSegment precedence", () => {
 		const levels = [level("session", { allow: ["npm test"] }), level("defaults", { deny: ["npm"] })];
 		expect(decideSegment(words("npm test"), levels, CWD, HOME)).toEqual({ kind: "deny", rule: "npm" });
 	});
-	test("project level allow is ignored; falls back to defaults ask", () => {
+	test("project level allow is permitted; allows command", () => {
 		const levels = [
 			level("project", { allow: ["curl"] }),
 			defaultsLevel,
 		];
 		expect(decideSegment(words("curl https://example.com"), levels, CWD, HOME)).toEqual({
-			kind: "ask",
-			rule: "curl",
-			persistable: true,
+			kind: "allow",
 		});
 	});
 	test("allowedPaths permits otherwise unallowed outside paths", () => {
@@ -379,5 +393,457 @@ git status`;
 		const res = parseShellCommand(cmd);
 		expect(res.segments).toEqual([["git", "status"], ["echo", "ok"]]);
 		expect(decide(cmd)).toEqual({ kind: "allow" });
+	});
+});
+
+describe("Heredoc & subshell lexer hardening (Plan 9 Workstream 4)", () => {
+	test("python3 heredoc with dash has complex: false and prefix 'python3'", () => {
+		const cmd = `python3 - << 'EOF'\nimport os\nprint("hello")\nEOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["python3", "-"]]);
+		expect(commandPrefix(res.parsedSegments[0].words)).toBe("python3");
+	});
+
+	test("backslash-escaped delimiter python3 << \\EOF quotes body", () => {
+		const cmd = `python3 << \\EOF\nprint("$HOME")\nEOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["python3"]]);
+	});
+
+	test("heredoc followed by && parses logical segments", () => {
+		const cmd = `python3 - << 'EOF' && echo ok\nprint("a && b")\nEOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["python3", "-"], ["echo", "ok"]]);
+	});
+
+	test("heredoc followed by pipe on newline parses downstream segment", () => {
+		const cmd = `python3 - << 'EOF' |\nprint("a | b")\nEOF\ngrep a`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["python3", "-"], ["grep", "a"]]);
+	});
+
+	test("double quotes inside subshell do not leak inner lines into shell segments", () => {
+		const cmd = `python3 -c "$(cat << 'EOF'\nprint("double quotes && rm -rf /")\nEOF\n)"`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(true);
+		expect(res.segments.length).toBe(1);
+		expect(res.segments[0][0]).toBe("python3");
+		expect(res.segments[0][1]).toBe("-c");
+		expect(res.segments.some(seg => seg.includes("rm"))).toBe(false);
+	});
+
+	test("subshell closing parenthesis after heredoc does not emit stray ')' segment", () => {
+		const cmd = `x=$(python3 << 'EOF'\nprint(1)\nEOF\n)`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(true);
+		expect(res.segments.some(seg => seg.includes(")"))).toBe(false);
+		expect(res.segments).toEqual([]);
+	});
+	test("closing EOF without trailing newline consumes body completely", () => {
+		const cmd = `cat << 'EOF'\nhello\nEOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["cat"]]);
+	});
+
+	test("FD-prefixed heredoc 0<<EOF strips file descriptor number", () => {
+		const cmd = `cat 0<<EOF\ninput\nEOF`;
+		const res = parseShellCommand(cmd);
+		expect(res.complex).toBe(false);
+		expect(res.segments).toEqual([["cat"]]);
+	});
+
+	test("python3 script prefix normalizes to python3, not subcommand", () => {
+		expect(commandPrefix(words("python3 script.py"))).toBe("python3");
+		expect(commandPrefix(words("python3 -m unittest"))).toBe("python3 -m unittest");
+		expect(commandPrefix(words("python script.py"))).toBe("python");
+		expect(commandPrefix(words("python -m unittest"))).toBe("python -m unittest");
+	});
+});
+
+describe("Cross-Harness Adapters & Bun.Glob (Plan 9 Workstreams 1 & 2)", () => {
+	test("Bun.Glob matches Read(**/.env) and Edit(src/**)", () => {
+		expect(matchesGlob("**/.env", "deep/sub/dir/.env")).toBe(true);
+		expect(matchesGlob("**/.env", "deep/sub/dir/not-env")).toBe(false);
+		expect(matchesGlob("src/**", "src/components/Button.tsx")).toBe(true);
+		expect(matchesGlob("src/**", "docs/index.md")).toBe(false);
+	});
+
+	test("translates Claude Code command prefixes and allow Edit paths to internal rules", () => {
+		const claude = {
+			allow: [
+				"Bash(git status *)",
+				"Bash(pwd)",
+				"Read(**/.env)",
+				"Edit(src/**)",
+				"mcp__sqlite__query",
+			],
+			ask: ["Bash(npm publish *)"],
+			deny: ["Bash(rm -rf *)", "Read(**/.env)"],
+		};
+		const rules = fromClaudePermissions(claude);
+		expect(rules.allow).toEqual(["git status", "pwd"]);
+		expect(rules.allowedPaths).toEqual(["src/**"]);
+		expect(rules.ask).toEqual(["npm publish"]);
+		expect(rules.deny).toEqual(["rm -rf"]);
+	});
+
+	test("translates Devin CLI command prefixes and allow Write paths to internal rules", () => {
+		const devin = {
+			allow: [
+				"Exec(git status)",
+				"Read(**/.env)",
+				"Write(src/**)",
+				"mcp__sqlite__query",
+			],
+			ask: ["Exec(npm publish)"],
+			deny: ["Exec(rm -rf)"],
+		};
+		const rules = fromDevinPermissions(devin);
+		expect(rules.allow).toEqual(["git status"]);
+		expect(rules.allowedPaths).toEqual(["src/**"]);
+		expect(rules.ask).toEqual(["npm publish"]);
+		expect(rules.deny).toEqual(["rm -rf"]);
+	});
+
+	test("toClaudePermissions preserves non-prefix entries and translates only command prefixes", () => {
+		const existing = {
+			allow: ["Read(docs/**)", "Fetch(api.github.com)"],
+			ask: ["Edit(/etc/**)"],
+			deny: ["Read(**/.env)", "mcp__dangerous__*"],
+		};
+		const rules: PermissionRules = {
+			allow: ["git status", "pwd"],
+			ask: ["npm publish"],
+			deny: ["rm -rf"],
+		};
+		const claude = toClaudePermissions(rules, existing, true);
+		expect(claude.allow).toContain("Read(docs/**)");
+		expect(claude.allow).toContain("Fetch(api.github.com)");
+		expect(claude.allow).toContain("Bash(git status *)");
+		expect(claude.allow).toContain("Bash(pwd)");
+
+		// ask and deny preserve original entries and do not inherit inverted rules
+		expect(claude.ask).toEqual(["Edit(/etc/**)"]);
+		expect(claude.deny).toEqual(["Read(**/.env)", "mcp__dangerous__*"]);
+	});
+
+	test("toDevinPermissions preserves non-prefix entries and translates only command prefixes", () => {
+		const existing = {
+			allow: ["Read(docs/**)", "WebFetch(https://*)"],
+			ask: ["Write(/etc/**)"],
+			deny: ["Read(**/.env)"],
+		};
+		const rules: PermissionRules = {
+			allow: ["git status"],
+			ask: ["npm publish"],
+			deny: ["rm -rf"],
+		};
+		const devin = toDevinPermissions(rules, existing, true);
+		expect(devin.allow).toContain("Read(docs/**)");
+		expect(devin.allow).toContain("WebFetch(https://*)");
+		expect(devin.allow).toContain("Exec(git status)");
+
+		// ask and deny preserve original entries
+		expect(devin.ask).toEqual(["Write(/etc/**)"]);
+		expect(devin.deny).toEqual(["Read(**/.env)"]);
+	});
+	test("lazy mtime detection and async mirroring propagates single-file deletion", async () => {
+		const testHome = join(tmpdir(), `test-home-${Date.now()}`);
+		const tmpDir = join(testHome, "project");
+		const claudeFile = join(tmpDir, ".claude", "settings.local.json");
+		const devinFile = join(tmpDir, ".devin", "config.local.json");
+		const ompFile = join(tmpDir, ".omp", "permissions.local.json");
+
+		clearScopeCache();
+
+		await Bun.write(
+			claudeFile,
+			JSON.stringify(
+				{
+					permissions: {
+						allow: ["Bash(pytest *)", "Bash(ruff *)"],
+						ask: [],
+						deny: [],
+					},
+				},
+				null,
+				2,
+			),
+		);
+
+		const rules1 = getScopeRules("projectLocal", tmpDir, testHome);
+		expect(rules1.allow).toContain("pytest");
+		expect(rules1.allow).toContain("ruff");
+
+		await flushPendingMirrors();
+
+		expect(await Bun.file(ompFile).exists()).toBe(true);
+		expect(await Bun.file(devinFile).exists()).toBe(true);
+
+		await Bun.write(
+			claudeFile,
+			JSON.stringify(
+				{
+					permissions: {
+						allow: ["Bash(pytest *)"],
+						ask: [],
+						deny: [],
+					},
+				},
+				null,
+				2,
+			),
+		);
+
+		const rules2 = getScopeRules("projectLocal", tmpDir, testHome);
+		expect(rules2.allow).toContain("pytest");
+		expect(rules2.allow).not.toContain("ruff");
+
+		await flushPendingMirrors();
+
+		const ompContent = await Bun.file(ompFile).json();
+		expect(ompContent.allow).toContain("pytest");
+		expect(ompContent.allow).not.toContain("ruff");
+	});
+});
+
+describe("Double-Prompt Prevention & Subagent Session State (Plan 9 Workstream 3)", () => {
+	test("decideSegment attaches unapprovedPrefix when command prefix is not allowed", () => {
+		const levels = [
+			level("session", { allow: ["git"] }),
+			defaultsLevel,
+		];
+		const dec = decideSegment(words("mycustomcmd /opt/other/file"), levels, CWD, HOME);
+		expect(dec.kind).toBe("ask");
+		expect(dec.rule).toContain("path outside workspace");
+		if (dec.kind === "ask") {
+			expect(dec.unapprovedPrefix).toBe("mycustomcmd");
+		}
+	});
+
+	test("decideSegment does not attach unapprovedPrefix when command prefix is already allowed", () => {
+		const levels = [
+			level("session", { allow: ["cat"] }),
+			defaultsLevel,
+		];
+		const dec = decideSegment(words("cat /opt/other/file"), levels, CWD, HOME);
+		expect(dec.kind).toBe("ask");
+		if (dec.kind === "ask") {
+			expect(dec.unapprovedPrefix).toBeUndefined();
+		}
+	});
+});
+
+describe("Worktrunk (wt) & Git Worktree Lifecycle (Plan 10)", () => {
+	test("commandPrefix normalizes Worktrunk commands", () => {
+		expect(commandPrefix(words("wt list"))).toBe("wt list");
+		expect(commandPrefix(words("wt status"))).toBe("wt status");
+		expect(commandPrefix(words("wt switch --create feat"))).toBe("wt switch");
+		expect(commandPrefix(words("wt step copy-ignored"))).toBe("wt step copy-ignored");
+		expect(commandPrefix(words("wt step diff"))).toBe("wt step diff");
+		expect(commandPrefix(words("wt merge"))).toBe("wt merge");
+		expect(commandPrefix(words("wt remove feat"))).toBe("wt remove");
+	});
+
+	test("permissions.defaults.json configures wt commands appropriately", () => {
+		expect(defaultsRules.allow).toContain("wt list");
+		expect(defaultsRules.allow).toContain("wt status");
+		expect(defaultsRules.allow).toContain("wt step diff");
+		expect(defaultsRules.allow).toContain("wt step copy-ignored");
+		expect(defaultsRules.allow).toContain("wt config state");
+
+		expect(defaultsRules.ask).toContain("wt merge");
+		expect(defaultsRules.ask).toContain("wt remove");
+		expect(defaultsRules.ask).toContain("doas");
+	});
+
+	test("saveRule rejects shell keywords and builtins", async () => {
+		const testHome = join(tmpdir(), `test-save-reject-${Date.now()}`);
+		const tmpDir = join(testHome, "project");
+		clearScopeCache();
+
+		await saveRule("projectLocal", "allow", "continue", tmpDir, testHome);
+		await saveRule("projectLocal", "allow", "read", tmpDir, testHome);
+		await saveRule("projectLocal", "allow", "return", tmpDir, testHome);
+		await saveRule("projectLocal", "allow", ":", tmpDir, testHome);
+		await flushPendingMirrors();
+
+		const rules = getScopeRules("projectLocal", tmpDir, testHome);
+		expect(rules.allow).not.toContain("continue");
+		expect(rules.allow).not.toContain("read");
+		expect(rules.allow).not.toContain("return");
+		expect(rules.allow).not.toContain(":");
+	});
+
+	test("saveRule and scheduleAsyncMirror never write to project scope", async () => {
+		const testHome = join(tmpdir(), `test-project-ro-${Date.now()}`);
+		const tmpDir = join(testHome, "project");
+		const projectOmpFile = join(tmpDir, ".omp", "permissions.json");
+		clearScopeCache();
+
+		await saveRule("project", "allow", "pytest", tmpDir, testHome);
+		await flushPendingMirrors();
+
+		expect(await Bun.file(projectOmpFile).exists()).toBe(false);
+	});
+
+	test("workspaceRoots recognizes git linked worktree and protects git hooks/config", async () => {
+		const testHome = join(tmpdir(), `test-wt-home-${Date.now()}`);
+		const tmpMain = join(testHome, "main-repo");
+		const tmpWt = join(testHome, "wt-feature");
+		const gitDirInMain = join(tmpMain, ".git");
+		const worktreeGitDir = join(gitDirInMain, "worktrees", "my-feature");
+
+		await Bun.write(join(tmpWt, ".git"), `gitdir: ${worktreeGitDir}\n`);
+		await Bun.write(join(worktreeGitDir, "gitdir"), `${join(tmpWt, ".git")}\n`);
+		await Bun.write(join(gitDirInMain, "config"), "[core]\n");
+		await Bun.write(join(gitDirInMain, "hooks", "pre-commit"), "#!/bin/sh\n");
+
+		const roots = workspaceRoots(tmpWt, testHome);
+		expect(roots).toContain(tmpWt);
+		expect(roots).toContain(tmpMain);
+
+		expect(isProtectedPath(join(gitDirInMain, "hooks", "pre-commit"), tmpWt, testHome)).toBe(true);
+		expect(isProtectedPath(join(gitDirInMain, "config"), tmpWt, testHome)).toBe(true);
+
+		expect(isProtectedPath(join(tmpMain, "README.md"), tmpWt, testHome)).toBe(false);
+	});
+});
+
+describe("PreToolUse hook & evaluateCommand (Plan 15 Phase 1)", () => {
+	const hookPath = join(
+		dirname(fileURLToPath(import.meta.url)),
+		"..",
+		"dot_omp",
+		"private_agent",
+		"extensions",
+		"command-guard",
+		"hook.ts",
+	);
+
+	test("evaluateCommand gives expected verdicts across allow, ask, deny, and unmatched", () => {
+		const levels: PermissionLevel[] = [
+			level("user", { deny: ["npm publish"] }),
+			defaultsLevel,
+		];
+
+		expect(evaluateCommand("git status", CWD, HOME, levels).verdict).toBe("allow");
+		expect(evaluateCommand("sudo ls", CWD, HOME, levels).verdict).toBe("ask");
+		expect(evaluateCommand("npm publish", CWD, HOME, levels).verdict).toBe("deny");
+		expect(evaluateCommand("bash -c 'echo 1'", CWD, HOME, levels).verdict).toBe("ask");
+		expect(evaluateCommand("custom_unknown_bin", CWD, HOME, levels).verdict).toBe("unmatched");
+	});
+
+	test("hook subprocess handles Claude Code PreToolUse payload for ask", async () => {
+		const proc = Bun.spawn(["bun", hookPath], {
+			stdin: "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		proc.stdin.write(
+			JSON.stringify({
+				hook_event_name: "PreToolUse",
+				tool_name: "Bash",
+				tool_input: { command: "sudo ls" },
+			}),
+		);
+		proc.stdin.end();
+		const exitCode = await proc.exited;
+		const stdout = await new Response(proc.stdout).text();
+
+		expect(exitCode).toBe(0);
+		const parsed = JSON.parse(stdout);
+		expect(parsed.hookSpecificOutput?.permissionDecision).toBe("ask");
+		expect(parsed.hookSpecificOutput?.permissionDecisionReason).toContain("sudo");
+	});
+
+	test("hook subprocess handles Devin CLI exec payload for ask with fallback block", async () => {
+		const proc = Bun.spawn(["bun", hookPath], {
+			stdin: "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		proc.stdin.write(
+			JSON.stringify({
+				hook_event_name: "PreToolUse",
+				tool_name: "exec",
+				tool_input: { command: "bash -c 'ls'" },
+			}),
+		);
+		proc.stdin.end();
+		const exitCode = await proc.exited;
+		const stdout = await new Response(proc.stdout).text();
+
+		expect(exitCode).toBe(0);
+		const parsed = JSON.parse(stdout);
+		expect(parsed.decision).toBe("block");
+		expect(parsed.reason).toContain("needs human approval");
+	});
+
+	test("hook subprocess produces no output and exits 0 for allowed commands", async () => {
+		const proc = Bun.spawn(["bun", hookPath], {
+			stdin: "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		proc.stdin.write(
+			JSON.stringify({
+				hook_event_name: "PreToolUse",
+				tool_name: "Bash",
+				tool_input: { command: "git status" },
+			}),
+		);
+		proc.stdin.end();
+		const exitCode = await proc.exited;
+		const stdout = await new Response(proc.stdout).text();
+
+		expect(exitCode).toBe(0);
+		expect(stdout.trim()).toBe("");
+	});
+
+	test("hook subprocess fails open (exit 1, no stdout) on malformed stdin", async () => {
+		const proc = Bun.spawn(["bun", hookPath], {
+			stdin: "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		proc.stdin.write("not-valid-json-{{{");
+		proc.stdin.end();
+		const exitCode = await proc.exited;
+		const stdout = await new Response(proc.stdout).text();
+
+		expect(exitCode).toBe(1);
+		expect(stdout.trim()).toBe("");
+	});
+
+	test("loadPermissionLevels with mirror: false performs no write side effects", async () => {
+		const testHome = join(tmpdir(), `test-read-only-${Date.now()}`);
+		const tmpDir = join(testHome, "project");
+		const claudeFile = join(tmpDir, ".claude", "settings.local.json");
+		const ompFile = join(tmpDir, ".omp", "permissions.local.json");
+
+		clearScopeCache();
+		await Bun.write(
+			claudeFile,
+			JSON.stringify({
+				permissions: {
+					allow: ["Bash(pytest *)"],
+					ask: [],
+					deny: [],
+				},
+			}),
+		);
+
+		// Load with mirror: false
+		loadPermissionLevels(tmpDir, testHome, new Set(), new Set(), new Set(), { mirror: false });
+		await flushPendingMirrors();
+
+		// Peer file should NOT have been created by the read-only loader
+		expect(await Bun.file(ompFile).exists()).toBe(false);
 	});
 });
