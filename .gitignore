@@ -7,3 +7,10 @@ Thumbs.db
 .scratch/*
 !.scratch/.gitkeep
 node_modules/
+
+# Local agent overrides
+.claude/settings.local.json
+.devin/config.local.json
+.devin/mcp_config.local.json
+.omp/permissions.local.json
+AGENTS.local.md
