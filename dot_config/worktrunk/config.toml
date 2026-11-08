@@ -1,0 +1,17 @@
+# Global Worktrunk (wt) configuration managed by chezmoi.
+# Docs: https://worktrunk.dev/config/
+
+# Place sibling worktrees next to the repo: ../wt-{{ repo }}-{{ branch | sanitize }}
+worktree-path = "../wt-{{ repo }}-{{ branch | sanitize }}"
+
+[post-create]
+# Copy gitignored local agent permissions, specs, and .env files into new worktrees
+# so omp, Claude Code, and Devin immediately share local rules and task specs.
+copy-ignored = "wt step copy-ignored"
+
+[merge]
+# Preserve clean linear history via rebase + fast-forward into target branch,
+# then remove the worktree and branch automatically.
+squash = false
+rebase = true
+remove = true

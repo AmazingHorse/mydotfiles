@@ -265,6 +265,28 @@ if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     Invoke-Expression (& { (zoxide init powershell | Out-String) })
 }
 
+# Worktrunk (wt) shell integration with Windows Terminal clash guard
+$MiseWtShim = Join-Path $env:LOCALAPPDATA 'mise\shims\wt.exe'
+$WtCommand = $null
+if (Test-Path -LiteralPath $MiseWtShim) {
+    $WtCommand = $MiseWtShim
+} else {
+    $Candidate = Get-Command wt -ErrorAction SilentlyContinue
+    if ($Candidate -and $Candidate.Source -notmatch 'WindowsApps\\wt\.exe') {
+        try {
+            $Ver = & $Candidate.Source --version 2>$null
+            if ($Ver -match '^(wt |worktrunk)') {
+                $WtCommand = $Candidate.Source
+            }
+        } catch {}
+    }
+}
+if ($WtCommand) {
+    try {
+        & $WtCommand config shell init powershell 2>$null | Out-String | Invoke-Expression
+    } catch {}
+}
+
 $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
 if (-not $OhMyPoshCommand) {
     Write-Warning 'Oh My Posh is not installed. Run the dotfiles bootstrap to install it.'

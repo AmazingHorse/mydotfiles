@@ -3,39 +3,61 @@
 set -euo pipefail
 
 # agy-crew {{ .packages.agy_crew }}
+# worktrunk {{ .packages.worktrunk }}
 export PATH="${HOME}/.local/bin:${HOME}/.local/share/mise/shims:${PATH}"
 
-if ! command -v npm >/dev/null 2>&1 || ! command -v agy >/dev/null 2>&1; then
-    echo "Skipping agy-crew skill linking: npm or agy is not on PATH."
-    exit 0
+pkg_installer=""
+if command -v bun >/dev/null 2>&1; then
+    case "$(command -v bun)" in
+        /mnt/*) ;;
+        *) pkg_installer="bun" ;;
+    esac
+fi
+if [ -z "${pkg_installer}" ] && command -v npm >/dev/null 2>&1; then
+    case "$(command -v npm)" in
+        /mnt/*) ;;
+        *) pkg_installer="npm" ;;
+    esac
 fi
 
-case "$(command -v npm)" in
-    /mnt/*)
-        echo "Skipping agy-crew skill linking: npm resolves to Windows ($(command -v npm))."
-        exit 0
-        ;;
-esac
-
-if ! npm install -g "agy-crew@{{ .packages.agy_crew }}"; then
-    echo "Warning: could not install agy-crew; skipping omp skill linking." >&2
-    exit 0
-fi
-
-if [ -x "${HOME}/.local/bin/mise" ]; then
-    "${HOME}/.local/bin/mise" reshim || true
-fi
-
-if command -v agy-crew >/dev/null 2>&1; then
-    agy-crew install --hosts omp || true
-elif [ -x "${HOME}/.local/bin/mise" ]; then
-    "${HOME}/.local/bin/mise" exec -- agy-crew install --hosts omp || true
-else
-    npm_bin="$(npm root -g 2>/dev/null)/../bin"
-    if [ -x "${npm_bin}/agy-crew" ]; then
-        "${npm_bin}/agy-crew" install --hosts omp || true
+if [ -n "${pkg_installer}" ] && command -v agy >/dev/null 2>&1; then
+    if ! "${pkg_installer}" install -g "agy-crew@{{ .packages.agy_crew }}"; then
+        echo "Warning: could not install agy-crew; skipping omp skill linking." >&2
     else
-        echo "Warning: agy-crew command not found; skipping skill installation." >&2
+        if [ -x "${HOME}/.local/bin/mise" ]; then
+            "${HOME}/.local/bin/mise" reshim || true
+        fi
+
+        if command -v agy-crew >/dev/null 2>&1; then
+            agy-crew install --hosts omp || true
+        elif [ -x "${HOME}/.local/bin/mise" ]; then
+            "${HOME}/.local/bin/mise" exec -- agy-crew install --hosts omp || true
+        fi
+    fi
+else
+    echo "Skipping agy-crew skill linking: bun/npm or agy is not on PATH."
+fi
+
+# Worktrunk plugins for omp and Claude Code
+wt_bin=""
+if [ -x "${HOME}/.local/share/mise/shims/wt" ]; then
+    wt_bin="${HOME}/.local/share/mise/shims/wt"
+elif command -v wt >/dev/null 2>&1; then
+    candidate="$(command -v wt)"
+    case "${candidate}" in
+        /mnt/*) ;;
+        *) wt_bin="${candidate}" ;;
+    esac
+fi
+
+if [ -n "${wt_bin}" ]; then
+    echo "Installing Worktrunk plugins..."
+    "${wt_bin}" config plugins opi install --yes || true
+    if command -v claude >/dev/null 2>&1; then
+        case "$(command -v claude)" in
+            /mnt/*) ;;
+            *) "${wt_bin}" config plugins claude install --yes || true ;;
+        esac
     fi
 fi
 {{ end -}}

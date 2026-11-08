@@ -143,13 +143,36 @@ omp-sandbox *args:
 
 
 [no-cd]
-worktree-new branch:
+worktree-new branch base="":
     #!/usr/bin/env bash
     set -euo pipefail
     branch={{quote(branch)}}
+    base={{quote(base)}}
     if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
         printf 'Run worktree-new inside a git repository.\n' >&2
         exit 1
+    fi
+    wt_bin=""
+    if [ -x "${HOME}/.local/share/mise/shims/wt" ]; then
+        wt_bin="${HOME}/.local/share/mise/shims/wt"
+    elif command -v wt >/dev/null 2>&1; then
+        cand="$(command -v wt)"
+        case "${cand}" in
+            /mnt/c/*|[A-Za-z]:/*) ;;
+            *)
+                if "${cand}" --version 2>/dev/null | grep -qE '^wt |worktrunk'; then
+                    wt_bin="${cand}"
+                fi
+                ;;
+        esac
+    fi
+    if [ -n "${wt_bin}" ]; then
+        if [ -n "$base" ]; then
+            "$wt_bin" switch --create "$branch" --base "$base" --no-cd
+        else
+            "$wt_bin" switch --create "$branch" --no-cd
+        fi
+        exit 0
     fi
     safe_branch="${branch//\//-}"
     worktree_dir="$(dirname "$repo_root")/wt-$safe_branch"
@@ -160,23 +183,72 @@ worktree-new branch:
     if git show-ref --verify --quiet "refs/heads/$branch"; then
         git worktree add "$worktree_dir" "$branch"
     else
-        git worktree add -b "$branch" "$worktree_dir" HEAD
+        start_point="${base:-HEAD}"
+        git worktree add -b "$branch" "$worktree_dir" "$start_point"
     fi
-    if [[ -f ./.agent-spec.md ]]; then
-        cp ./.agent-spec.md "$worktree_dir/.agent-spec.md"
-    fi
-    if [[ -f ./.agent-profile.md ]]; then
-        cp ./.agent-profile.md "$worktree_dir/.agent-profile.md"
-    fi
+    for file in .agent-spec.md .agent-profile.md .claude/settings.local.json .devin/config.local.json .omp/permissions.local.json; do
+        if [[ -f "./$file" ]]; then
+            mkdir -p "$(dirname "$worktree_dir/$file")"
+            cp "./$file" "$worktree_dir/$file"
+        fi
+    done
     printf '%s\n' "$worktree_dir"
 
 [no-cd]
-worktree-rm branch:
+worktree-merge branch="":
     #!/usr/bin/env bash
     set -euo pipefail
     branch={{quote(branch)}}
+    wt_bin=""
+    if [ -x "${HOME}/.local/share/mise/shims/wt" ]; then
+        wt_bin="${HOME}/.local/share/mise/shims/wt"
+    elif command -v wt >/dev/null 2>&1; then
+        cand="$(command -v wt)"
+        case "${cand}" in
+            /mnt/c/*|[A-Za-z]:/*) ;;
+            *)
+                if "${cand}" --version 2>/dev/null | grep -qE '^wt |worktrunk'; then
+                    wt_bin="${cand}"
+                fi
+                ;;
+        esac
+    fi
+    if [ -n "${wt_bin}" ]; then
+        if [ -n "$branch" ]; then
+            "$wt_bin" merge "$branch" --yes
+        else
+            "$wt_bin" merge --yes
+        fi
+    else
+        printf 'Worktrunk (wt) is required for worktree-merge.\n' >&2
+        exit 1
+    fi
+
+[no-cd]
+worktree-done branch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    branch={{quote(branch)}}
+    wt_bin=""
+    if [ -x "${HOME}/.local/share/mise/shims/wt" ]; then
+        wt_bin="${HOME}/.local/share/mise/shims/wt"
+    elif command -v wt >/dev/null 2>&1; then
+        cand="$(command -v wt)"
+        case "${cand}" in
+            /mnt/c/*|[A-Za-z]:/*) ;;
+            *)
+                if "${cand}" --version 2>/dev/null | grep -qE '^wt |worktrunk'; then
+                    wt_bin="${cand}"
+                fi
+                ;;
+        esac
+    fi
+    if [ -n "${wt_bin}" ]; then
+        "$wt_bin" remove "$branch"
+        exit 0
+    fi
     if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-        printf 'Run worktree-rm inside a git repository.\n' >&2
+        printf 'Run worktree-done inside a git repository.\n' >&2
         exit 1
     fi
     safe_branch="${branch//\//-}"
@@ -188,6 +260,36 @@ worktree-rm branch:
     if ! git worktree remove "$worktree_dir"; then
         printf 'Failed to remove worktree %s. If there are uncommitted changes, commit/stash them or remove manually.\n' "$worktree_dir" >&2
         exit 1
+    fi
+
+[no-cd]
+worktree-rm branch:
+    just -g worktree-done {{quote(branch)}}
+
+[no-cd]
+omp-wt branch *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    branch={{quote(branch)}}
+    wt_bin=""
+    if [ -x "${HOME}/.local/share/mise/shims/wt" ]; then
+        wt_bin="${HOME}/.local/share/mise/shims/wt"
+    elif command -v wt >/dev/null 2>&1; then
+        cand="$(command -v wt)"
+        case "${cand}" in
+            /mnt/c/*|[A-Za-z]:/*) ;;
+            *)
+                if "${cand}" --version 2>/dev/null | grep -qE '^wt |worktrunk'; then
+                    wt_bin="${cand}"
+                fi
+                ;;
+        esac
+    fi
+    if [ -n "${wt_bin}" ]; then
+        "$wt_bin" switch --create "$branch" -x -- just -g omp-run "$@"
+    else
+        dir=$(just -g worktree-new "$branch")
+        (cd "$dir" && just -g omp-run "$@")
     fi
 [no-cd]
 doctor:
@@ -203,7 +305,7 @@ doctor:
     report_value OLLAMA_HOST "${OLLAMA_HOST:-"(unset)"}"
     report_value AGENT_HOME "${AGENT_HOME:-$agent_home}"
     printf '\nactive stack:\n'
-    for binary in omp agy just rg node; do
+    for binary in omp agy just rg bun node wt; do
         if binary_path="$(command -v "$binary" 2>/dev/null)"; then
             report_value "$binary" "$binary_path"
         else

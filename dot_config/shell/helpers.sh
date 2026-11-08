@@ -106,3 +106,27 @@ bins() {
 if [ -r "$HOME/.config/shell/wsl-windows-path.sh" ]; then
     . "$HOME/.config/shell/wsl-windows-path.sh"
 fi
+
+# Worktrunk (wt) shell wrapper with Windows Terminal clash guard
+_resolve_worktrunk() {
+    if [ -x "${HOME}/.local/share/mise/shims/wt" ]; then
+        printf '%s\n' "${HOME}/.local/share/mise/shims/wt"
+        return 0
+    fi
+    wt_candidate="$(command -v wt 2>/dev/null || true)"
+    case "${wt_candidate}" in
+        /mnt/c/*|[A-Za-z]:/*) return 1 ;;
+        *)
+            if [ -n "${wt_candidate}" ] && "${wt_candidate}" --version 2>/dev/null | grep -qE '^wt |worktrunk'; then
+                printf '%s\n' "${wt_candidate}"
+                return 0
+            fi
+            ;;
+    esac
+    return 1
+}
+
+if wt_bin="$(_resolve_worktrunk 2>/dev/null)"; then
+    eval "$("${wt_bin}" config shell init "$(basename "${SHELL:-bash}")" 2>/dev/null)" || true
+fi
+unset -f _resolve_worktrunk 2>/dev/null || true

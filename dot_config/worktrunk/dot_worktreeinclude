@@ -1,0 +1,5 @@
+.agent-spec.md
+.agent-profile.md
+.claude/settings.local.json
+.devin/config.local.json
+.omp/permissions.local.json

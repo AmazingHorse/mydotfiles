@@ -16,3 +16,5 @@ tools:
   approval:
     agy_query: allow
     bash: allow
+session:
+  worktreeScope: repo
