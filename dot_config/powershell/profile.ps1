@@ -287,6 +287,148 @@ if ($WtCommand) {
     } catch {}
 }
 
+function Invoke-WtAgent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Harness,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Arguments
+    )
+
+    $HarnessCmd = Get-Command $Harness -ErrorAction SilentlyContinue
+    if (-not $HarnessCmd) {
+        Write-Error "$Harness : The term '$Harness' is not recognized."
+        return
+    }
+
+    # Opt-outs
+    if ($env:AGENT_NO_WT -eq '1' -or $env:OMP_NO_WT -eq '1') {
+        & $HarnessCmd.Source @Arguments
+        return
+    }
+
+    # Flags that should bypass worktree creation
+    $BypassFlags = @('-h', '--help', '-v', '--version', '--no-tui', '-p', '--print', '-w', '--worktree', 'mcp', 'auth', 'config')
+    foreach ($arg in $Arguments) {
+        if ($BypassFlags -contains $arg) {
+            & $HarnessCmd.Source @Arguments
+            return
+        }
+    }
+
+    # Check git repo
+    $IsGit = git rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -ne 0 -or $IsGit -ne 'true') {
+        & $HarnessCmd.Source @Arguments
+        return
+    }
+
+    if (-not $WtCommand) {
+        & $HarnessCmd.Source @Arguments
+        return
+    }
+
+    # Check if already in linked worktree
+    $GitDir = (git rev-parse --path-format=absolute --git-dir 2>$null)
+    if ($GitDir) { $GitDir = $GitDir.Trim() }
+    $GitCommon = (git rev-parse --path-format=absolute --git-common-dir 2>$null)
+    if ($GitCommon) { $GitCommon = $GitCommon.Trim() }
+    if ($GitDir -and $GitCommon -and $GitDir -ne $GitCommon) {
+        & $HarnessCmd.Source @Arguments
+        return
+    }
+
+    # Ensure agent-bus exists
+    $AgentBusDir = Join-Path $GitCommon 'agent-bus'
+    if (-not (Test-Path -LiteralPath $AgentBusDir)) {
+        New-Item -ItemType Directory -Path $AgentBusDir -Force | Out-Null
+    }
+
+    $BaseBranch = (git symbolic-ref --short HEAD 2>$null)
+    if (-not $BaseBranch) { $BaseBranch = 'main' }
+
+    $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $Branch = if ($env:AGENT_BRANCH) { $env:AGENT_BRANCH } elseif ($env:OMP_BRANCH) { $env:OMP_BRANCH } else { "agent/$Harness-$Timestamp" }
+
+    Write-Host "==> Spawning isolated worktree for $Harness ($Branch)..." -ForegroundColor Cyan
+    $OrigDir = Get-Location
+
+    & $WtCommand switch --create $Branch
+    if ($LASTEXITCODE -ne 0) {
+        & $HarnessCmd.Source @Arguments
+        return
+    }
+
+    try {
+        & $HarnessCmd.Source @Arguments
+    } finally {
+        $CommitsAhead = (git rev-list --count "HEAD" "^$BaseBranch" 2>$null)
+        $DirtyCount = (git status --porcelain --untracked-files=no 2>$null | Measure-Object).Count
+        if ($CommitsAhead -eq '0' -and $DirtyCount -eq 0) {
+            Write-Host "==> Zero commits or tracked modifications; cleaning up worktree $Branch..." -ForegroundColor Gray
+            Set-Location $OrigDir
+            & $WtCommand remove $Branch --yes 2>$null
+        } else {
+            Write-Host "`n==> Worktree $Branch has $CommitsAhead commit(s) ahead of $BaseBranch." -ForegroundColor Yellow
+            Write-Host "==> Review & merge: wt merge  (or: wt switch $BaseBranch; wt remove $Branch)" -ForegroundColor Gray
+        }
+    }
+}
+
+function omp { Invoke-WtAgent -Harness 'omp' @args }
+function claude { Invoke-WtAgent -Harness 'claude' @args }
+function devin { Invoke-WtAgent -Harness 'devin' @args }
+
+function wtr {
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$Branch,
+        [Parameter(Position = 1)]
+        [string]$ReviewHarness
+    )
+    if (-not $WtCommand) {
+        Write-Error "Worktrunk (wt) is not available."
+        return
+    }
+    & $WtCommand switch $Branch
+    if ($LASTEXITCODE -ne 0) { return }
+
+    $GitCommon = (git rev-parse --git-common-dir 2>$null)
+    if ($GitCommon) { $GitCommon = $GitCommon.Trim() }
+    $BaseBranch = (git rev-parse --abbrev-ref origin/HEAD 2>$null)
+    if ($BaseBranch) { $BaseBranch = $BaseBranch -replace '^origin/', '' }
+    if (-not $BaseBranch) { $BaseBranch = 'main' }
+
+    Write-Host "`n=== Branch: $Branch (vs $BaseBranch) ===" -ForegroundColor Cyan
+    git log --oneline "${BaseBranch}..HEAD" 2>$null
+    Write-Host "`n=== Changed Files ===" -ForegroundColor Cyan
+    git diff --stat "${BaseBranch}...HEAD" 2>$null
+
+    $SafeBranch = $Branch -replace '/', '_'
+    $BusNote = Join-Path $GitCommon "agent-bus/$SafeBranch.md"
+    if (-not (Test-Path -LiteralPath $BusNote)) {
+        $BusNote = Join-Path $GitCommon "agent-bus/$Branch.md"
+    }
+    if (Test-Path -LiteralPath $BusNote) {
+        Write-Host "`n=== Agent Bus Handoff Note ($BusNote) ===" -ForegroundColor Green
+        Get-Content -LiteralPath $BusNote
+    }
+
+    if ($ReviewHarness) {
+        Write-Host "`n==> Launching review session in $ReviewHarness..." -ForegroundColor Cyan
+        $env:AGENT_NO_WT = '1'
+        $env:OMP_NO_WT = '1'
+        try {
+            & $ReviewHarness
+        } finally {
+            Remove-Item env:AGENT_NO_WT -ErrorAction SilentlyContinue
+            Remove-Item env:OMP_NO_WT -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-Host "`n==> Next steps:`n  wt merge        (verify & merge into $BaseBranch)`n  wt switch -     (back to previous)`n  wt remove $Branch (discard)" -ForegroundColor Gray
+    }
+}
+
 $OhMyPoshCommand = Get-Command oh-my-posh -ErrorAction SilentlyContinue
 if (-not $OhMyPoshCommand) {
     Write-Warning 'Oh My Posh is not installed. Run the dotfiles bootstrap to install it.'

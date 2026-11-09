@@ -143,6 +143,78 @@ omp-sandbox *args:
 
 
 [no-cd]
+verify:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # 0. Enforce that .agent-spec.md and .agent-profile.md are never tracked in git
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        if git ls-files --error-unmatch .agent-spec.md >/dev/null 2>&1; then
+            printf 'Error: .agent-spec.md is tracked in git. Untrack it before verifying/merging.\n' >&2
+            exit 1
+        fi
+        if git ls-files --error-unmatch .agent-profile.md >/dev/null 2>&1; then
+            printf 'Error: .agent-profile.md is tracked in git. Untrack it before verifying/merging.\n' >&2
+            exit 1
+        fi
+    fi
+
+    # 1. Spec-defined verification: extract and run command from .agent-spec.md
+    if [[ -f .agent-spec.md ]]; then
+        spec_cmd="$(awk '
+            /^## Verification/ { in_verif = 1; next }
+            /^## / { in_verif = 0 }
+            in_verif {
+                if ($0 ~ /^```/) next
+                if ($0 ~ /^[[:space:]]*#/) next
+                if (NF) {
+                    lines = (lines ? lines "\n" : "") $0
+                }
+            }
+            END { print lines }
+        ' .agent-spec.md || true)"
+        if [[ -n "${spec_cmd}" ]]; then
+            printf '==> Running verification from .agent-spec.md:\n%s\n' "${spec_cmd}"
+            bash -euo pipefail -c "${spec_cmd}"
+            exit 0
+        fi
+    fi
+
+    # 2. Project justfile verification: check, test-fast, or test
+    if [[ -f justfile || -f Justfile || -f .justfile ]]; then
+        if just --summary 2>/dev/null | grep -qw "check"; then
+            printf '==> Running project verification: just check\n'
+            exec just check
+        elif just --summary 2>/dev/null | grep -qw "test-fast"; then
+            printf '==> Running project verification: just test-fast\n'
+            exec just test-fast
+        elif just --summary 2>/dev/null | grep -qw "test"; then
+            printf '==> Running project verification: just test\n'
+            exec just test
+        fi
+    fi
+
+    # 3. Auto-detect by lockfile / manifest
+    if [[ -f bun.lock || -f bun.lockb ]]; then
+        printf '==> Running bun verification: bun test\n'
+        exec bun test
+    elif [[ -f uv.lock || -f pyproject.toml ]]; then
+        printf '==> Running uv/pytest verification: uv run pytest\n'
+        exec uv run pytest
+    elif [[ -f Cargo.toml ]]; then
+        printf '==> Running cargo verification: cargo check && cargo test\n'
+        cargo check && exec cargo test
+    elif [[ -f package-lock.json ]]; then
+        printf '==> Running npm verification: npm test\n'
+        exec npm test
+    elif [[ -f pnpm-lock.yaml ]]; then
+        printf '==> Running pnpm verification: pnpm test\n'
+        exec pnpm test
+    fi
+
+    printf '==> No verification target detected; passing verification gate.\n'
+
+[no-cd]
 worktree-new branch base="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -213,6 +285,9 @@ worktree-merge branch="":
                 ;;
         esac
     fi
+    # Run pre-merge verification
+    just --justfile {{quote(justfile())}} verify
+
     if [ -n "${wt_bin}" ]; then
         if [ -n "$branch" ]; then
             "$wt_bin" merge "$branch" --yes
@@ -224,6 +299,13 @@ worktree-merge branch="":
         exit 1
     fi
 
+    # Post-merge cleanup
+    common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir 2>/dev/null || true)"
+    if [ -n "${common_dir}" ] && [ -n "${branch}" ]; then
+        safe_branch="${branch//\//_}"
+        rm -f "${common_dir}/agent-bus/${safe_branch}.md" "${common_dir}/agent-bus/${branch}.md" 2>/dev/null || true
+    fi
+    git worktree prune 2>/dev/null || true
 [no-cd]
 worktree-done branch:
     #!/usr/bin/env bash
@@ -291,6 +373,74 @@ omp-wt branch *args:
         dir=$(just -g worktree-new "$branch")
         (cd "$dir" && just -g omp-run "$@")
     fi
+
+[no-cd]
+dispatch branch task *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    branch={{quote(branch)}}
+    task={{quote(task)}}
+
+    dir="$(just --justfile {{quote(justfile())}} worktree-new "${branch}")"
+    cd "${dir}"
+    just --justfile {{quote(justfile())}} plan "${task}"
+    shift 2 || true
+    OMP_NO_WT=1 just --justfile {{quote(justfile())}} omp-run "$@"
+    just --justfile {{quote(justfile())}} verify
+
+[no-cd]
+worktree-gc:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+        printf 'Run worktree-gc inside a git repository.\n' >&2
+        exit 1
+    fi
+
+    printf '==> Pruning stale git worktree metadata...\n'
+    git worktree prune -v
+
+    common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir 2>/dev/null || true)"
+    base_branch="$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+    [ -n "$base_branch" ] || base_branch="main"
+
+    printf '==> Checking for merged linked worktrees against %s...\n' "$base_branch"
+    git worktree list --porcelain | awk '
+        BEGIN { wt=""; br="" }
+        /^worktree / { wt=$2 }
+        /^branch / { br=$2; if (wt && br) { print wt, br }; wt=""; br="" }
+    ' | while read -r wt_path wt_ref; do
+        [ "$wt_path" != "$repo_root" ] || continue
+        br_name="${wt_ref#refs/heads/}"
+
+        if git merge-base --is-ancestor "$wt_ref" "$base_branch" 2>/dev/null; then
+            if (cd "$wt_path" && git status --porcelain 2>/dev/null | grep -q .); then
+                printf 'Notice: %s (%s) is merged but has uncommitted modifications; keeping.\n' "$wt_path" "$br_name"
+            else
+                printf 'Removing merged worktree: %s (%s)\n' "$wt_path" "$br_name"
+                git worktree remove "$wt_path" 2>/dev/null || git worktree remove --force "$wt_path" 2>/dev/null || true
+                git branch -d "$br_name" 2>/dev/null || true
+                if [ -n "$common_dir" ]; then
+                    safe_br="${br_name//\//_}"
+                    rm -f "$common_dir/agent-bus/$safe_br.md" "$common_dir/agent-bus/$br_name.md" 2>/dev/null || true
+                fi
+            fi
+        fi
+    done
+
+    # Clean orphaned agent-bus notes
+    if [ -n "$common_dir" ] && [ -d "$common_dir/agent-bus" ]; then
+        printf '==> Cleaning orphaned agent-bus handoff notes...\n'
+        for note in "$common_dir/agent-bus/"*.md; do
+            [ -f "$note" ] || continue
+            note_name="$(basename "$note" .md)"
+            if ! git show-ref --verify --quiet "refs/heads/$note_name" 2>/dev/null && \
+               ! git show-ref --verify --quiet "refs/heads/${note_name//_//}" 2>/dev/null; then
+                printf 'Removing orphaned bus note: %s\n' "$note"
+                rm -f "$note"
+            fi
+        done
+    fi
 [no-cd]
 doctor:
     #!/usr/bin/env bash
@@ -353,6 +503,27 @@ doctor:
             seed_count=$((seed_count + 1))
         done
         report_value "seeds" "$seed_count found"
+    fi
+    printf '\nworktrunk & cross-harness hooks:\n'
+    if command -v wt >/dev/null 2>&1; then
+        report_value "worktrunk" "$(wt --version 2>/dev/null || echo "present")"
+        if [[ -f "$agent_home/agent/hooks/pre/worktrunk.ts" ]]; then
+            report_value "wt plugin (omp)" "installed"
+        else
+            report_value "wt plugin (omp)" "missing"
+        fi
+        claude_settings="$HOME/.claude/settings.json"
+        if [[ -f "$claude_settings" ]] && grep -q 'hook.ts' "$claude_settings" 2>/dev/null; then
+            report_value "command-guard hook" "registered (Claude Code)"
+        else
+            report_value "command-guard hook" "unregistered (Claude Code)"
+        fi
+        if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            wt_count="$(git worktree list --porcelain | grep -c '^worktree ' || true)"
+            report_value "active worktrees" "$wt_count"
+        fi
+    else
+        report_value "worktrunk" "missing"
     fi
     printf '\nchezmoi & agent rules:\n'
     if command -v chezmoi >/dev/null 2>&1; then

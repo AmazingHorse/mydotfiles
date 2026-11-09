@@ -11,5 +11,8 @@ Portable, robust, and idempotent shell scripts and automation harnesses.
 
 ## Verification
 ```bash
+# If a project justfile defines check:
+just check
+# Otherwise:
 shellcheck <changed-scripts> && bash -n <changed-scripts>
 ```

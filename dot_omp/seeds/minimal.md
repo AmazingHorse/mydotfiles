@@ -10,5 +10,7 @@ Baseline execution profile for any language or toolchain without language-specif
 
 ## Verification
 ```bash
-# Execute the verification command defined in .agent-spec.md
+# If a project justfile defines check:
+just check
+# Otherwise: execute the verification command defined in .agent-spec.md
 ```

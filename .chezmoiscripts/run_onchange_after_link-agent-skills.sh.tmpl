@@ -51,13 +51,17 @@ elif command -v wt >/dev/null 2>&1; then
 fi
 
 if [ -n "${wt_bin}" ]; then
-    echo "Installing Worktrunk plugins..."
-    "${wt_bin}" config plugins omp install --yes || true
-    if command -v claude >/dev/null 2>&1; then
-        case "$(command -v claude)" in
-            /mnt/*) ;;
-            *) "${wt_bin}" config plugins claude install --yes || true ;;
-        esac
-    fi
+    echo "Scanning and installing Worktrunk plugins..."
+    for target in omp claude codex opencode pi; do
+        if [ "$target" = "omp" ]; then
+            "${wt_bin}" config plugins omp install --yes || true
+        elif command -v "$target" >/dev/null 2>&1; then
+            target_bin="$(command -v "$target")"
+            case "${target_bin}" in
+                /mnt/*|[A-Za-z]:/*) ;;
+                *) "${wt_bin}" config plugins "$target" install --yes || true ;;
+            esac
+        fi
+    done
 fi
 {{ end -}}

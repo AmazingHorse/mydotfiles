@@ -9,6 +9,11 @@ worktree-path = "../wt-{{ repo }}-{{ branch | sanitize }}"
 # so omp, Claude Code, and Devin immediately share local rules and task specs.
 copy-ignored = "wt step copy-ignored"
 
+[pre-merge]
+# Run deterministic verification gate before merging an agent worktree into the target branch.
+# If verification fails, merge is aborted and the worktree stays intact.
+verify = "just -g verify"
+
 [merge]
 # Preserve clean linear history via rebase + fast-forward into target branch,
 # then remove the worktree and branch automatically.
