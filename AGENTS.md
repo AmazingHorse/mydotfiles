@@ -14,6 +14,7 @@ Cross-agent instructions for this repository. Applies to omp, Claude Code, agy, 
 3. **Conventional Commits:** Every commit message must follow `type(scope): description`.
 4. **Tool manifest convention:** Tools are added via `dot_config/mise/config.toml.tmpl` and pinned in `.chezmoidata.toml`. Do not write custom shell installers for binaries available in aqua/mise.
 5. **Targeted edits:** Touch only files directly related to the objective. No drive-by formatting churn or unsolicited refactors.
+6. **Versioning:** Milestone tags use calver `vYYYY.MM.N` (per-month counter N; e.g. `v2026.11.0`), annotated. No semver — tags are named restore points, not API contracts. The legacy `0.1` tag predates this convention; leave it.
 
 ## Canonical Docs
 - `CONTRIBUTING.md` — Commit conventions, PR rules, how-to-add-a-tool.
