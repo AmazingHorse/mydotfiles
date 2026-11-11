@@ -1,0 +1,5 @@
+# Opt-out overlay for the managed `worktree.onStart: create` default.
+# `OMP_NO_WT=1 omp` (or `AGENT_NO_WT=1 omp`) wraps `omp --config <this file>`
+# so a single interactive session runs in the current checkout.
+worktree:
+  onStart: off

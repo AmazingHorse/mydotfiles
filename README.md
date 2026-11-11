@@ -83,8 +83,7 @@ Run `just -g` from any directory:
 just -g doctor                                      # inspect env, stack, pins, secrets, command-guard
 just -g seed [lang] [archetype]                     # scaffold AGENTS.md + .agent-profile.md
 just -g agent-init [archetype]                      # attach an archetype profile to current repo
-just -g plan "task description"                     # draft .agent-spec.md via omp (plan-only)
-just -g omp-run [args...]                           # run omp with .agent-profile.md & .agent-spec.md
+just -g omp-wt <branch> [args...]                   # named-branch worktree + omp inside (wt switch -x)
 just -g worktree-new <branch>                       # create ../wt-<branch> sibling git worktree
 just -g worktree-done <branch>                      # remove sibling worktree when clean
 ```

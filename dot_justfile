@@ -88,40 +88,6 @@ git-guard:
     fi
 
 [no-cd]
-run-omp model="" *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just --justfile {{quote(justfile())}} git-guard
-    if [[ ! -s ./.agent-spec.md ]]; then
-        printf 'Missing or empty .agent-spec.md; run omp or generate a spec first.\n' >&2
-        exit 1
-    fi
-    if ! command -v omp >/dev/null 2>&1; then
-        printf 'omp is not installed; install it with mise use -g npm:@oh-my-pi/pi-coding-agent\n' >&2
-        exit 1
-    fi
-    model="${1:-}"
-    shift || true
-    if [[ "$model" == -* ]]; then
-        set -- "$model" "$@"
-        model=""
-    fi
-    for arg in "$@"; do
-        if [[ "$arg" == "-c" || "$arg" == "--continue" || "$arg" == "-r" || "$arg" == "--resume" ]]; then
-            printf 'Error: fresh session required; %s is not permitted in run-omp.\n' "$arg" >&2
-            exit 1
-        fi
-    done
-    effective_model="${model:-${OMP_MODEL:-}}"
-    cmd=(omp)
-    if [[ -n "$effective_model" ]]; then
-        cmd+=(--model "$effective_model")
-    fi
-    cmd+=("$@" @.agent-spec.md)
-    exec "${cmd[@]}"
-
-alias omp-run := run-omp
-[no-cd]
 omp-sandbox *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -353,6 +319,10 @@ omp-wt branch *args:
     #!/usr/bin/env bash
     set -euo pipefail
     branch={{quote(branch)}}
+    if ! command -v omp >/dev/null 2>&1; then
+        printf 'omp is not installed; install it with mise use -g npm:@oh-my-pi/pi-coding-agent\n' >&2
+        exit 1
+    fi
     wt_bin=""
     if [ -x "${HOME}/.local/share/mise/shims/wt" ]; then
         wt_bin="${HOME}/.local/share/mise/shims/wt"
@@ -368,25 +338,11 @@ omp-wt branch *args:
         esac
     fi
     if [ -n "${wt_bin}" ]; then
-        "$wt_bin" switch --create "$branch" -x -- just -g omp-run "$@"
+        "$wt_bin" switch --create "$branch" -x omp -- "$@"
     else
         dir=$(just -g worktree-new "$branch")
-        (cd "$dir" && just -g omp-run "$@")
+        (cd "$dir" && omp "$@")
     fi
-
-[no-cd]
-dispatch branch task *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    branch={{quote(branch)}}
-    task={{quote(task)}}
-
-    dir="$(just --justfile {{quote(justfile())}} worktree-new "${branch}")"
-    cd "${dir}"
-    just --justfile {{quote(justfile())}} plan "${task}"
-    shift 2 || true
-    OMP_NO_WT=1 just --justfile {{quote(justfile())}} omp-run "$@"
-    just --justfile {{quote(justfile())}} verify
 
 [no-cd]
 worktree-gc:

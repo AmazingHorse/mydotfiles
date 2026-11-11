@@ -2,7 +2,7 @@
 
 Tracked shims, temporary bridges, and planned upstream replacements.
 
-## 1. Cross-Harness Bash Permission Shim and PreToolUse Hook (`command-guard`)
+## 1. Cross-Harness Bash Permission Shim and PreToolUse Hook (`command-guard`) (moved into friend-programmer)
 - **Location:** `dot_omp/private_agent/extensions/command-guard/`
 - **Why it exists:** AI coding harnesses (omp, Claude Code, Devin CLI) have fragmented and uneven security primitives. Hard security checks (`bash -c`, command substitution `$()`, `git -c`, workspace escapes, protected agent configs) lack declarative schema representation in Claude and Devin settings. `command-guard` provides a unified policy engine in omp and a `PreToolUse` hook CLI (`hook.ts`) for Claude and Devin.
 - **Retirement criteria:** Retire when native PreToolUse hook protocols and granular per-command approval rules are standardized and natively supported across all three coding agent harnesses, or when all runs are sandboxed at the OS container layer.
@@ -26,3 +26,12 @@ Tracked shims, temporary bridges, and planned upstream replacements.
   - Add `"aqua:cli/cli" = "{{ .packages.gh }}"` to `dot_config/mise/config.toml.tmpl` per ADR 0002.
   - Remove the legacy winget `GitHub.cli` installation from `run_onchange_after_install-packages.ps1.tmpl`.
   - Wire up PR generation recipes (e.g. in `justfile` / `dot_justfile`) if needed.
+
+## 6. Bun Standardization (Backlog)
+- **Scope:** consolidate JS runtime/package operations on `bun` where it is already pinned (`{{ .packages.bun }}` via mise global).
+- **Current state (2026-11):**
+  - `omp` already *runs* under bun: the `aube-bin-shim` wrapper `exec`s `dist/cli.js` via `bun` (`bun` is pinned partly for this). The `npm:` mise backend remains the only viable *install* path — no `bun:` backend exists in mise.
+  - `run_onchange_after_link-agent-skills.sh.tmpl` already prefers `bun install -g` for `agy-crew` (npm fallback).
+  - `scripts/omp-permissions.test.ts` runs under `bun test`.
+- **Remaining candidates:** any lingering `npm`/`npx`/`node` call sites in `scripts/`, `.chezmoiscripts/` (non-bun fallbacks), `dot_justfile`, and Windows PowerShell install paths; evaluate whether the `node` global pin is still required or only kept for tooling that genuinely needs it.
+- **Constraint:** keep `npm:`-backend pins in `dot_config/mise/config.toml.tmpl` — backend choice ≠ runtime. Verify `bun` shim resolution on Windows before dropping node anywhere.

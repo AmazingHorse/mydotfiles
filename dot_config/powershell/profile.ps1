@@ -287,6 +287,92 @@ if ($WtCommand) {
     } catch {}
 }
 
+function Invoke-WtAgentEpilogue {
+    param(
+        [string]$OrigDir,
+        [string]$BaseBranch,
+        [bool]$Resumed,
+        [int]$ExitCode
+    )
+
+    $GitDir = (git rev-parse --path-format=absolute --git-dir 2>$null)
+    if ($GitDir) { $GitDir = $GitDir.Trim() }
+    $GitCommon = (git rev-parse --path-format=absolute --git-common-dir 2>$null)
+    if ($GitCommon) { $GitCommon = $GitCommon.Trim() }
+    if (-not $GitDir -or -not $GitCommon -or $GitDir -eq $GitCommon) { return }
+
+    # Re-resolve the branch at exit: it may have been renamed or switched in
+    # place during the session.
+    $CurBranch = (git branch --show-current 2>$null)
+    if (-not $CurBranch) { $CurBranch = '(detached)' }
+    $WtRoot = (git rev-parse --show-toplevel 2>$null)
+    if ($WtRoot) { $WtRoot = $WtRoot.Trim() }
+
+    $PolicyFile = $null
+    $Policy = ''
+    if ($WtRoot) {
+        $PolicyFile = Join-Path $GitCommon ('agent-bus/.policy-' + (Split-Path $WtRoot -Leaf))
+        if (Test-Path -LiteralPath $PolicyFile) {
+            $Policy = (Get-Content -LiteralPath $PolicyFile -Raw).Trim()
+        }
+    }
+
+    $CommitsAhead = (git rev-list --count 'HEAD' "^$BaseBranch" 2>$null)
+    # A missing base ref must never read as "0 commits": force the
+    # non-pristine path so nothing is auto-removed on a bad comparison.
+    if ($LASTEXITCODE -ne 0 -or -not $CommitsAhead) { $CommitsAhead = '?' }
+    $DirtyCount = (git status --porcelain --untracked-files=no 2>$null | Measure-Object).Count
+
+    if ($CommitsAhead -eq '0' -and $DirtyCount -eq 0) {
+        if ($Resumed -and $Policy -ne 'drop') {
+            Write-Host "==> Worktree $CurBranch unchanged; leaving in place." -ForegroundColor Gray
+        } else {
+            Write-Host "==> No commits or tracked modifications; removing worktree $CurBranch..." -ForegroundColor Gray
+            Set-Location $OrigDir
+            & $WtCommand remove $CurBranch --yes 2>$null
+        }
+        if ($PolicyFile) { Remove-Item -LiteralPath $PolicyFile -Force -ErrorAction SilentlyContinue }
+        return
+    }
+
+    Write-Host "`n==> Worktree ${CurBranch}: $CommitsAhead commit(s) ahead of $BaseBranch, $DirtyCount modified tracked file(s)." -ForegroundColor Yellow
+
+    $Action = $Policy
+    if (-not $Action -and $env:AGENT_WT_ASK -ne '0') {
+        $Reply = Read-Host '    [Enter]=keep  r=rename branch  d=discard worktree+branch'
+        switch -Regex ($Reply) {
+            '^[rR]$' {
+                $NewName = Read-Host '    New branch name'
+                if ($NewName -and (git branch -m $NewName 2>$null; $LASTEXITCODE -eq 0)) {
+                    $OldSafe = $CurBranch -replace '/', '_'
+                    $NewSafe = $NewName -replace '/', '_'
+                    $OldNote = Join-Path $GitCommon "agent-bus/$OldSafe.md"
+                    if (Test-Path -LiteralPath $OldNote) {
+                        Move-Item -LiteralPath $OldNote -Destination (Join-Path $GitCommon "agent-bus/$NewSafe.md") -Force -ErrorAction SilentlyContinue
+                    }
+                    $CurBranch = $NewName
+                    Write-Host "==> Renamed to $NewName; worktree kept at $WtRoot" -ForegroundColor Gray
+                } else {
+                    Write-Host "==> Rename skipped; keeping $CurBranch" -ForegroundColor Gray
+                }
+                $Action = 'keep'
+            }
+            '^[dD]$' { $Action = 'drop' }
+            default { $Action = 'keep' }
+        }
+    }
+    if (-not $Action) { $Action = 'keep' }
+
+    if ($Action -eq 'drop') {
+        Write-Host "==> Discarding worktree $CurBranch..." -ForegroundColor Gray
+        Set-Location $OrigDir
+        & $WtCommand remove $CurBranch --yes -f -D 2>$null
+    } else {
+        Write-Host "==> Review & merge: wt merge  (or: wt switch $BaseBranch; wt remove $CurBranch)" -ForegroundColor Gray
+    }
+    if ($PolicyFile) { Remove-Item -LiteralPath $PolicyFile -Force -ErrorAction SilentlyContinue }
+}
+
 function Invoke-WtAgent {
     param(
         [Parameter(Mandatory = $true)]
@@ -295,7 +381,7 @@ function Invoke-WtAgent {
         [string[]]$Arguments
     )
 
-    $HarnessCmd = Get-Command $Harness -ErrorAction SilentlyContinue
+    $HarnessCmd = Get-Command $Harness -CommandType Application -ErrorAction SilentlyContinue
     if (-not $HarnessCmd) {
         Write-Error "$Harness : The term '$Harness' is not recognized."
         return
@@ -347,37 +433,212 @@ function Invoke-WtAgent {
     $BaseBranch = (git symbolic-ref --short HEAD 2>$null)
     if (-not $BaseBranch) { $BaseBranch = 'main' }
 
-    $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $Branch = if ($env:AGENT_BRANCH) { $env:AGENT_BRANCH } elseif ($env:OMP_BRANCH) { $env:OMP_BRANCH } else { "agent/$Harness-$Timestamp" }
-
-    Write-Host "==> Spawning isolated worktree for $Harness ($Branch)..." -ForegroundColor Cyan
-    $OrigDir = Get-Location
-
-    & $WtCommand switch --create $Branch
-    if ($LASTEXITCODE -ne 0) {
-        & $HarnessCmd.Source @Arguments
-        return
+    # AGENT_BRANCH / OMP_BRANCH name an explicit target: an existing local
+    # branch resumes into a worktree, anything else is created.
+    $Resumed = $false
+    $Requested = if ($env:AGENT_BRANCH) { $env:AGENT_BRANCH } elseif ($env:OMP_BRANCH) { $env:OMP_BRANCH } else { '' }
+    if ($Requested) {
+        $Branch = $Requested
+        git show-ref --verify --quiet "refs/heads/$Branch" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $Resumed = $true
+        } else {
+            Write-Host "==> Branch $Branch not found; creating it." -ForegroundColor Gray
+        }
+    } else {
+        $Branch = "agent/$Harness-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     }
 
+    $OrigDir = Get-Location
+
+    # -x runs the harness inside the worktree with full terminal control and
+    # propagates its exit code; the shell lands in the worktree afterwards.
+    # The epilogue lives in finally so Ctrl+C unwinding still resolves the
+    # worktree; it self-guards when no linked worktree was reached.
+    if ($Resumed) {
+        Write-Host "==> Resuming branch $Branch in a worktree for $Harness..." -ForegroundColor Cyan
+    } else {
+        Write-Host "==> Spawning isolated worktree for $Harness ($Branch)..." -ForegroundColor Cyan
+    }
+    $ExitCode = 0
     try {
-        & $HarnessCmd.Source @Arguments
-    } finally {
-        $CommitsAhead = (git rev-list --count "HEAD" "^$BaseBranch" 2>$null)
-        $DirtyCount = (git status --porcelain --untracked-files=no 2>$null | Measure-Object).Count
-        if ($CommitsAhead -eq '0' -and $DirtyCount -eq 0) {
-            Write-Host "==> Zero commits or tracked modifications; cleaning up worktree $Branch..." -ForegroundColor Gray
-            Set-Location $OrigDir
-            & $WtCommand remove $Branch --yes 2>$null
+        if ($Resumed) {
+            & $WtCommand switch $Branch -x $HarnessCmd.Source -- @Arguments
         } else {
-            Write-Host "`n==> Worktree $Branch has $CommitsAhead commit(s) ahead of $BaseBranch." -ForegroundColor Yellow
-            Write-Host "==> Review & merge: wt merge  (or: wt switch $BaseBranch; wt remove $Branch)" -ForegroundColor Gray
+            & $WtCommand switch --create $Branch -x $HarnessCmd.Source -- @Arguments
         }
+        $ExitCode = $LASTEXITCODE
+    } finally {
+        Invoke-WtAgentEpilogue -OrigDir $OrigDir -BaseBranch $BaseBranch -Resumed $Resumed -ExitCode $ExitCode
+    }
+
+    # Switch failed before reaching a worktree (create path only): run in place
+    if (-not $Resumed -and $ExitCode -ne 0 -and (Get-Location).Path -eq $OrigDir.Path) {
+        & $HarnessCmd.Source @Arguments
     }
 }
 
-function omp { Invoke-WtAgent -Harness 'omp' @args }
 function claude { Invoke-WtAgent -Harness 'claude' @args }
 function devin { Invoke-WtAgent -Harness 'devin' @args }
+
+# omp manages session worktrees natively (worktree.onStart=create in
+# ~/.omp/agent/config.yml); this shim only preserves the OMP_NO_WT/AGENT_NO_WT
+# opt-out by layering a no-worktree config overlay for that invocation.
+function omp {
+    $OmpCmd = Get-Command omp -CommandType Application -ErrorAction SilentlyContinue
+    if (-not $OmpCmd) {
+        Write-Error "omp : The term 'omp' is not recognized."
+        return
+    }
+    if ($env:OMP_NO_WT -eq '1' -or $env:AGENT_NO_WT -eq '1') {
+        & $OmpCmd.Source --config "$HOME/.omp/agent/no-worktree.yml" @args
+    } else {
+        & $OmpCmd.Source @args
+    }
+}
+
+# Interactive picker: open an existing worktree or branch in an agent session.
+# Usage: wta [omp|claude|devin] [args...]   (default harness: omp)
+function wta {
+    param(
+        [Parameter(Position = 0)]
+        [string]$Harness = 'omp',
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Arguments
+    )
+    if ($Harness -notin @('omp', 'claude', 'devin')) {
+        $Arguments = @($Harness) + $Arguments
+        $Harness = 'omp'
+    }
+    if (-not $WtCommand) {
+        Write-Error 'Worktrunk (wt) is not available.'
+        return
+    }
+    $IsGit = git rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -ne 0 -or $IsGit -ne 'true') {
+        Write-Error 'wta: not a git repository'
+        return
+    }
+    $HarnessCmd = Get-Command $Harness -CommandType Application -ErrorAction SilentlyContinue
+    if (-not $HarnessCmd) {
+        Write-Error "$Harness : The term '$Harness' is not recognized."
+        return
+    }
+
+    $GitCommon = (git rev-parse --path-format=absolute --git-common-dir 2>$null)
+    if ($GitCommon) {
+        $GitCommon = $GitCommon.Trim()
+        $AgentBusDir = Join-Path $GitCommon 'agent-bus'
+        if (-not (Test-Path -LiteralPath $AgentBusDir)) {
+            New-Item -ItemType Directory -Path $AgentBusDir -Force | Out-Null
+        }
+    }
+    $BaseBranch = (git symbolic-ref --short HEAD 2>$null)
+    if (-not $BaseBranch) { $BaseBranch = 'main' }
+    $OrigDir = Get-Location
+    $ExitCode = 0
+    try {
+        & $WtCommand switch --branches -x $HarnessCmd.Source -- @Arguments
+        $ExitCode = $LASTEXITCODE
+    } finally {
+        Invoke-WtAgentEpilogue -OrigDir $OrigDir -BaseBranch $BaseBranch -Resumed $true -ExitCode $ExitCode
+    }
+}
+
+# Pull uncommitted work (tracked modifications + untracked files; gitignored
+# excluded) from another worktree into the CURRENT one, via a temporary stash —
+# refs/stash is shared across linked worktrees and `stash apply` performs a
+# real merge, so diverged bases get proper conflict markers instead of patch
+# rejects. Move by default (source ends clean, which unblocks `wt merge`);
+# -Copy keeps the source checkout's changes by popping the stash back.
+# Usage: wtpull [-Copy] [source]   (source: worktree path or branch; default: primary checkout)
+function wtpull {
+    param(
+        [Parameter(Position = 0)]
+        [string]$Source,
+        [switch]$Copy
+    )
+    $Move = -not $Copy
+
+    $IsGit = git rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -ne 0 -or $IsGit -ne 'true') {
+        Write-Error 'wtpull: not a git repository'
+        return
+    }
+    $Dst = (git rev-parse --show-toplevel).Trim()
+
+    $SrcRoot = $null
+    if (-not $Source) {
+        $SrcRoot = (git worktree list --porcelain | Select-String '^worktree ' | Select-Object -First 1).Line.Substring(9)
+    } elseif (Test-Path -LiteralPath $Source) {
+        $SrcRoot = (git -C $Source rev-parse --show-toplevel 2>$null)
+    } else {
+        $entries = git worktree list --porcelain
+        for ($i = 0; $i -lt $entries.Count; $i++) {
+            if ($entries[$i] -match '^worktree (.+)$') { $wtPath = $Matches[1] }
+            if ($entries[$i] -eq "branch refs/heads/$Source") { $SrcRoot = $wtPath; break }
+        }
+    }
+    if (-not $SrcRoot) {
+        Write-Error "wtpull: cannot resolve source worktree for $Source"
+        return
+    }
+    $SrcRoot = $SrcRoot.Trim()
+    if ($SrcRoot -eq $Dst) {
+        Write-Error 'wtpull: source and target are the same worktree'
+        return
+    }
+
+    git -C $SrcRoot diff --quiet HEAD -- 2>$null
+    $hasDiff = ($LASTEXITCODE -ne 0)
+    $Untracked = @(git -C $SrcRoot ls-files -o --exclude-standard 2>$null)
+    if (-not $hasDiff -and $Untracked.Count -eq 0) {
+        Write-Host "==> Nothing to pull; $SrcRoot is clean." -ForegroundColor Gray
+        return
+    }
+
+    Write-Host "==> Pulling uncommitted changes from $SrcRoot ..." -ForegroundColor Cyan
+    git -C $SrcRoot stash push -u -m wtpull --quiet
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error 'wtpull: could not stash source changes'
+        return
+    }
+    # stash@{0} is ours (push just ran); verify by SHA before drop/pop.
+    $ourStash = (git -C $SrcRoot rev-parse -q --verify refs/stash 2>$null)
+
+    git stash apply --quiet 'stash@{0}' 2>$null
+    $applied = ($LASTEXITCODE -eq 0)
+    if ($applied) {
+        Write-Host "==> Pulled changes into $Dst" -ForegroundColor Cyan
+    } else {
+        Write-Error 'wtpull: applied with conflicts — resolve in this worktree.'
+    }
+
+    # Restore or retire the stash entry; only touch stash@{0} if it is still ours.
+    $tipNow = (git -C $SrcRoot rev-parse -q --verify refs/stash 2>$null)
+    if ($tipNow -ne $ourStash) {
+        Write-Error 'wtpull: stash stack changed underneath; leaving stash entries alone.'
+        return
+    }
+    if ($Move) {
+        if ($applied) {
+            git -C $SrcRoot stash drop -q 'stash@{0}'
+            Write-Host '==> Moved; source checkout is clean.' -ForegroundColor Gray
+        } else {
+            Write-Error 'wtpull: kept stash@{0} as backup — drop it after resolving.'
+            return
+        }
+    } else {
+        if ($applied) {
+            git -C $SrcRoot stash pop -q 'stash@{0}'
+            Write-Host '==> Copied; source restored (default is -Move to transfer).' -ForegroundColor Gray
+        } else {
+            git -C $SrcRoot stash pop -q 'stash@{0}' 2>$null
+            Write-Error 'wtpull: source restored; conflicts remain in this worktree.'
+            return
+        }
+    }
+}
 
 function wtr {
     param(

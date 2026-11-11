@@ -18,3 +18,13 @@ tools:
     bash: allow
 session:
   worktreeScope: repo
+# Native session worktree lifecycle (omp manages real linked git worktrees on
+# wt/<timestamp> branches; wt list/merge/remove still operate on them):
+#   onStart=create  fresh interactive sessions start in a new linked worktree
+#   onExit=ask      on exit (incl. Ctrl+C shutdown) prompt keep vs remove;
+#                   pristine worktrees offer instant removal, dirty/commit
+#                   worktrees default to keep
+# Opt out per invocation: OMP_NO_WT=1 omp  (-> --config ~/.omp/agent/no-worktree.yml)
+worktree:
+  onStart: create
+  onExit: ask

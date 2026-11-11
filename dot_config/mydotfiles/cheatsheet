@@ -43,10 +43,26 @@ Global agent & project runner (just -g) — from any directory
                               seeds: python, typescript-node, systems-shell, minimal
                               archetypes: infra-ops, agent-cli, data-pipeline, legacy-port
   just -g agent-init [arch]   attach .agent-profile.md to current repo
-  just -g plan "<task>"       generate .agent-spec.md via omp (plan-only)
-  just -g omp-run [args...]   run omp with repo .agent-profile.md & .agent-spec.md
+  just -g omp-wt <br> [args]  named-branch worktree + omp inside (wt switch -x)
   just -g worktree-new <br>   create sibling worktree ../wt-<br>
   just -g worktree-done <br>  remove clean sibling worktree
+
+Agent worktree lifecycle
+  omp                       native session worktree (onStart=create, onExit=ask)
+                            OMP_NO_WT=1 omp → run in current checkout
+  claude / devin            auto-worktree via wt switch -x; exit prompts
+                            keep / rename / discard (AGENT_WT_ASK=0 disables)
+  AGENT_BRANCH=<br> claude  resume existing branch into a fresh worktree
+  wta [harness]             pick a worktree/branch → launch session inside
+  wtr <br> [harness]        review a finished agent branch (log, diff, bus note)
+  wtpull [--copy] [src]     move another worktree's uncommitted changes in
+  inside omp: /wt <br>      relocate live session into a worktree
+              /wt-name <br> rename current branch mid-session
+              /wt-switch <br>   check out another branch in place
+              /wt-pull [--copy]   move root checkout's uncommitted work in
+              /wt-merge [target]  commit + merge to default branch (keeps wt)
+              /wt-keep · /wt-drop   pre-set exit policy for the wrapper
+              /wt-status    branch · root · commits ahead · dirty · policy
 
 omp Power-User Guide (TUI, Subagents, URIs & Tools)
   TUI & Session Control

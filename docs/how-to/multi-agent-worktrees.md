@@ -10,23 +10,67 @@ Practical guide for running parallel agent sessions (`omp`, `claude`, `devin`) o
 Navigate to any git repo's primary checkout and invoke your tool of choice:
 
 ```bash
-omp       # oh-my-pi
-claude    # Claude Code
-devin     # Devin CLI
+omp       # oh-my-pi   — native session worktree (worktree.onStart=create)
+claude    # Claude Code — wt-wrapped session worktree
+devin     # Devin CLI   — wt-wrapped session worktree
 ```
 
-**What happens automatically:**
-1. Spawns an isolated linked worktree at `../wt-<repo>-agent-<harness>-<timestamp>`.
-2. Copies local uncommitted settings (`.omp/permissions.local.json`, `.claude/settings.local.json`, `.devin/config.local.json`) via `.worktreeinclude`.
+**omp** manages the lifecycle itself: every fresh interactive session starts in a real linked git worktree on a `wt/<timestamp>` branch (under `~/.omp/wt`, or `worktree.base`). Its clone-first creation carries ignored files *and* build artifacts over, so `.env` and local permissions just work. These are ordinary linked worktrees — `wt list`, `wt merge`, `wt remove`, and `wtr` all operate on them.
+
+**claude / devin** are wrapped by `_wt_agent_exec`, which delegates to `wt switch --create agent/<harness>-<timestamp> -x <harness>`:
+
+1. Spawns a sibling linked worktree at `../wt-<repo>-agent-<harness>-<timestamp>`.
+2. Copies local uncommitted settings via `wt step copy-ignored` (`post-create` hook).
 3. Initializes a shared handoff directory at `$(git rev-parse --git-common-dir)/agent-bus/`.
+4. Runs the harness *inside* the worktree (`-x`), propagating its exit code.
+
+### Targeting an existing branch (claude / devin / wta)
+
+```bash
+AGENT_BRANCH=feature-x claude   # resume an existing local branch into a worktree
+wta                             # interactive wt picker (worktrees + branches) → omp
+wta claude                      # same picker → claude
+```
+
+`AGENT_BRANCH`/`OMP_BRANCH` naming a branch that doesn't exist falls back to `--create`. For exotic targets (`pr:<N>`, remote branches, paths) use `wt switch <target> -x omp` directly.
 
 ### Exiting
-- **Read-Only / No Changes:** Just exit (`Ctrl+D` or `exit`). If there are 0 commits ahead and 0 modified files, the worktree and branch are **automatically deleted**. Zero leftovers.
-- **Work Performed:** If the agent made commits or modifications, the worktree stays intact and prints a reminder:
-  ```text
-  ==> Worktree agent/omp-... has 2 commit(s) ahead of main.
-  ==> Review & merge: wt merge  (or: wt switch main && wt remove agent/omp-...)
-  ```
+- **omp:** `worktree.onExit=ask` prompts keep/remove on every exit — including Ctrl+C/SIGINT shutdowns, which flow through `session_shutdown`. Pristine worktrees can be dropped with no friction.
+- **claude / devin:** the shell epilogue applies after the harness exits *by any means* (Ctrl+D, Ctrl+C — the interactive shell survives the child's signal):
+  - **No commits, no tracked modifications:** worktree + branch auto-removed.
+  - **Work performed:** prompted `[Enter]=keep  r=rename branch  d=discard worktree+branch`. Rename uses `git branch -m`; the worktree directory keeps its original name. `AGENT_WT_ASK=0` disables the prompt (always keep).
+  - **Resumed worktrees** (`AGENT_BRANCH`, `wta`): pristine exits leave the worktree in place rather than removing a pre-existing artifact.
+
+### Mid-session commands (omp — `wt-session` extension)
+- `/wt-name <branch>` — rename the checked-out branch (works for `wt/*` and `agent/*` sessions alike).
+- `/wt-switch <branch>` — check out another branch **in place** inside the worktree (`-c` to create).
+- `/wt-keep` / `/wt-drop` — pre-arm the exit policy via an `agent-bus/.policy-*` marker the shell epilogue consumes (for omp-native worktrees, `onExit` governs instead).
+- `/wt` is omp's *built-in* relocation command: moves the live session into a fresh worktree carrying uncommitted changes.
+- `/wt-pull [--copy] [branch|path]` — move another worktree's uncommitted work into this one (default source: the primary checkout).
+- `/wt-merge [target]` — commit + merge this branch into the default branch (`wt merge --no-remove`: stage, squash, rebase, verify hooks, fast-forward). Keeps the worktree so the session's cwd survives — drop it on exit. From a bare shell, `wt merge --branch <branch>` does the same with full cleanup.
+- `/wt-status` — branch, root, commits ahead, dirty count, active policy.
+
+### Handing uncommitted work between checkouts
+
+`worktree.onStart` worktrees deliberately start clean at HEAD — uncommitted changes in the root checkout (e.g. left by a Devin Desktop session) do not carry over. To continue that work inside a session worktree:
+
+```bash
+wtpull                # shell: move primary checkout's changes into CWD worktree
+wtpull --copy         # keep the source checkout's changes instead of moving
+wtpull <branch|path>  # pull from a specific worktree instead of the primary
+# inside omp: /wt-pull [--copy] [branch|path]
+```
+
+It is a **one-way handoff, not sync**: `stash push -u` in the source + `stash apply` in the target (a real merge — diverged bases get conflict markers). The default **move** drops the stash, leaving the source clean — which also keeps `wt merge` unblocked, since it refuses to push into a dirty target checkout. `--copy` pops it back; if apply conflicts under move, the stash is kept as a named backup. Works identically from plain shells, claude, devin (`wtpull`), and omp (`/wt-pull`).
+
+The reverse direction needs no machinery: commit the worktree branch, `git switch <branch>` in the root checkout, and let the next agent continue there.
+
+### Opting out per invocation
+
+```bash
+OMP_NO_WT=1 omp        # config overlay: worktree.onStart=off for this run
+AGENT_NO_WT=1 claude   # skip the wt wrapper entirely
+```
 
 ---
 
