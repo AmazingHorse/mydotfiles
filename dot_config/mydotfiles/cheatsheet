@@ -60,7 +60,7 @@ Agent worktree lifecycle
               /wt-name <br> rename current branch mid-session
               /wt-switch <br>   check out another branch in place
               /wt-pull [--copy]   move root checkout's uncommitted work in
-              /wt-merge [target]  commit + merge to default branch (keeps wt)
+              /wt-merge [-m msg]  commit + merge to default branch (keeps wt)
               /wt-keep · /wt-drop   pre-set exit policy for the wrapper
               /wt-status    branch · root · commits ahead · dirty · policy
 

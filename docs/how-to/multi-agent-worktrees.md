@@ -47,7 +47,7 @@ wta claude                      # same picker → claude
 - `/wt-keep` / `/wt-drop` — pre-arm the exit policy via an `agent-bus/.policy-*` marker the shell epilogue consumes (for omp-native worktrees, `onExit` governs instead).
 - `/wt` is omp's *built-in* relocation command: moves the live session into a fresh worktree carrying uncommitted changes.
 - `/wt-pull [--copy] [branch|path]` — move another worktree's uncommitted work into this one (default source: the primary checkout).
-- `/wt-merge [target]` — commit + merge this branch into the default branch (`wt merge --no-remove`: stage, squash, rebase, verify hooks, fast-forward). Keeps the worktree so the session's cwd survives — drop it on exit. From a bare shell, `wt merge --branch <branch>` does the same with full cleanup.
+- `/wt-merge [target] [-m <msg>]` — commit pending changes with your message (required when dirty; prompted if omitted, so wt's `Changes to N files` fallback never lands), then `wt merge --no-commit --no-remove` (rebase, verify hooks, fast-forward). Keeps the worktree so the session's cwd survives — drop it on exit. From a bare shell: commit, then `wt merge --branch <branch>` for the same with full cleanup.
 - `/wt-status` — branch, root, commits ahead, dirty count, active policy.
 
 ### Handing uncommitted work between checkouts

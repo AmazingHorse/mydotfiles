@@ -321,7 +321,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("wt-merge", {
 		description:
-			"Commit and merge this branch into the default branch (wt merge --no-remove: stages pending changes, squashes, rebases, runs pre-merge verify hooks, fast-forwards). Worktree is kept for the session; drop it on exit. Usage: /wt-merge [target-branch]",
+			"Commit pending changes and merge this branch into the default branch (wt merge --no-remove: rebase, pre-merge verify hooks, fast-forward). Usage: /wt-merge [target] -m <commit message> — a message is required when the worktree is dirty (prompted if omitted); wt's fallback 'Changes to N files' is never used. Worktree is kept for the session; drop it on exit.",
 		getArgumentCompletions: prefix => {
 			const lower = prefix.trim().toLowerCase();
 			const matches = branchCache.filter(b => b.toLowerCase().startsWith(lower));
@@ -334,10 +334,30 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify("Detached HEAD — wt merge needs a branch.", "error");
 				return;
 			}
-			const target = args.trim() || info.baseBranch;
+
+			// Split on -m/--message: non-flag token before it is the target,
+			// everything after it is the commit message.
+			const tokens = args.trim().split(/\s+/).filter(Boolean);
+			const mIdx = tokens.findIndex(t => t === "-m" || t === "--message");
+			const targetTok = (mIdx === -1 ? tokens : tokens.slice(0, mIdx)).find(t => !t.startsWith("-"));
+			const target = targetTok ?? info.baseBranch;
+			let message =
+				mIdx === -1 ? "" : tokens.slice(mIdx + 1).join(" ").replace(/^["']+|["']+$/g, "").trim();
+
 			if (info.branch === target) {
 				ctx.ui.notify(`Already on '${target}' — nothing to merge.`, "warning");
 				return;
+			}
+
+			const status = await execInCwd(ctx.cwd, ["status", "--porcelain"]);
+			const hasChanges = status.stdout.trim().length > 0;
+			if (hasChanges && !message) {
+				message =
+					(await ctx.ui.input("Commit message for pending changes", "feat(scope): ..."))?.trim() ?? "";
+				if (!message) {
+					ctx.ui.notify("A commit message is required to merge a dirty worktree.", "warning");
+					return;
+				}
 			}
 
 			// Resolve wt through PATH but reject Windows mounts — under WSL,
@@ -354,11 +374,30 @@ export default function (pi: ExtensionAPI) {
 
 			const confirmed = await ctx.ui.confirm(
 				`Merge '${info.branch}' into '${target}'?`,
-				"Pending changes are committed (squashed), the branch is rebased, pre-merge verify hooks run, and the target fast-forwards. The worktree is kept so this session is not orphaned.",
+				hasChanges
+					? `Pending changes are committed as '${message}', the branch is rebased, pre-merge verify hooks run, and the target fast-forwards. The worktree is kept so this session is not orphaned.`
+					: "The branch is rebased, pre-merge verify hooks run, and the target fast-forwards. The worktree is kept so this session is not orphaned.",
 			);
 			if (!confirmed) return;
 
-			const res = await pi.exec(wtBin, ["merge", "--no-remove", "-y", target], { cwd: ctx.cwd });
+			// Commit pending changes ourselves so the real message lands on the
+			// branch; --no-commit then skips wt's fallback-message commit step.
+			if (hasChanges) {
+				const add = await execInCwd(ctx.cwd, ["add", "-A"]);
+				const commit = await execInCwd(ctx.cwd, ["commit", "-m", message]);
+				if (add.code !== 0 || commit.code !== 0) {
+					ctx.ui.notify(
+						`git commit failed: ${(commit.stderr || add.stderr || commit.stdout).trim()}`,
+						"error",
+					);
+					return;
+				}
+			}
+			const wtArgs = ["merge", "--no-remove", "-y"];
+			if (hasChanges) wtArgs.push("--no-commit");
+			wtArgs.push(target);
+
+			const res = await pi.exec(wtBin, wtArgs, { cwd: ctx.cwd });
 			if (res.code !== 0) {
 				ctx.ui.notify(
 					`wt merge failed (exit ${res.code}):\n${(res.stderr || res.stdout).trim()}\nA rebase conflict is left open in this worktree — resolve or \`git rebase --abort\`.`,
