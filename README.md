@@ -27,7 +27,7 @@ sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply https://github.com/
 ### Windows (PowerShell 7)
 
 ```powershell
-irm https://raw.githubusercontent.com/AmazingHorse/mydotfiles/master/scripts/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/AmazingHorse/mydotfiles/main/scripts/bootstrap.ps1 | iex
 ```
 
 From a checkout:
