@@ -10,10 +10,16 @@ Practical guide for running parallel agent sessions (`omp`, `claude`, `devin`) o
 Navigate to any git repo's primary checkout and invoke your tool of choice:
 
 ```bash
-omp       # oh-my-pi   — native session worktree (worktree.onStart=create)
+omp       # oh-my-pi   — native session worktree when enabled (worktree.onStart)
 claude    # Claude Code — wt-wrapped session worktree
 devin     # Devin CLI   — wt-wrapped session worktree
 ```
+
+> **Feature flag:** `omp`'s native session worktrees ship disabled
+> (`.chezmoidata.toml` → `[features].omp_session_worktrees = false`) while the
+> worktree behavior is reworked in a separate project. Set the flag to `true`
+> and `chezmoi apply` to restore `worktree.onStart=create`. The `wt`-wrapped
+> `claude`/`devin` wrappers below are unaffected.
 
 **omp** manages the lifecycle itself: every fresh interactive session starts in a real linked git worktree on a `wt/<timestamp>` branch (under `~/.omp/wt`, or `worktree.base`). Its clone-first creation carries ignored files *and* build artifacts over, so `.env` and local permissions just work. These are ordinary linked worktrees — `wt list`, `wt merge`, `wt remove`, and `wtr` all operate on them.
 

@@ -24,7 +24,12 @@ session:
 #   onExit=ask      on exit (incl. Ctrl+C shutdown) prompt keep vs remove;
 #                   pristine worktrees offer instant removal, dirty/commit
 #                   worktrees default to keep
-# Opt out per invocation: OMP_NO_WT=1 omp  (-> --config ~/.omp/agent/no-worktree.yml)
+# FEATURE-FLAGGED OFF: .chezmoidata.toml [features].omp_session_worktrees.
+# The implementation moved to another project for rework; onStart stays "off"
+# until the flag is flipped back. Per-invocation opt-out stays wired regardless:
+#   OMP_NO_WT=1 omp  (-> --config ~/.omp/agent/no-worktree.yml)
 worktree:
-  onStart: create
+  # Flipped to "create" by modify_config.yml when
+  # .chezmoidata.toml [features].omp_session_worktrees = true.
+  onStart: off
   onExit: ask

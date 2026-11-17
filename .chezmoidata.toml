@@ -14,6 +14,11 @@ infra = false
 containers = false
 rust = false
 
+[features]
+# omp session worktrees (worktree.onStart=create): moved to a separate project
+# for rework; flip to true to re-enable native session worktree spawning.
+omp_session_worktrees = false
+
 [packages]
 # renovate: datasource=github-releases depName=JanDeDobbeleer/oh-my-posh
 oh_my_posh = "24.8.0"

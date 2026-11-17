@@ -11,4 +11,7 @@
 {{-   end -}}
 {{- end -}}
 {{- $managed := fromYaml (include ".chezmoitemplates/omp-managed-config.yml") -}}
+{{- if get (get . "features" | default dict) "omp_session_worktrees" -}}
+{{-   $_ := set (get $managed "worktree") "onStart" "create" -}}
+{{- end -}}
 {{- mergeOverwrite $current $managed | toYaml -}}
