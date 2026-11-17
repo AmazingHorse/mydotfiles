@@ -427,7 +427,7 @@ doctor:
     printf '\nskills:\n'
     skills_dir="$agent_home/agent/skills"
     if [[ ! -d "$skills_dir" ]]; then
-        report_value skills 'not linked (run: agy-crew install --hosts omp)'
+        report_value skills 'none installed'
     else
         skill_count=0
         for skill in "$skills_dir"/*; do

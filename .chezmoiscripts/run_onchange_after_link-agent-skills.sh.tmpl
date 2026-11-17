@@ -2,41 +2,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# agy-crew {{ .packages.agy_crew }}
 # worktrunk {{ .packages.worktrunk }}
 export PATH="${HOME}/.local/bin:${HOME}/.local/share/mise/shims:${PATH}"
-
-pkg_installer=""
-if command -v bun >/dev/null 2>&1; then
-    case "$(command -v bun)" in
-        /mnt/*) ;;
-        *) pkg_installer="bun" ;;
-    esac
-fi
-if [ -z "${pkg_installer}" ] && command -v npm >/dev/null 2>&1; then
-    case "$(command -v npm)" in
-        /mnt/*) ;;
-        *) pkg_installer="npm" ;;
-    esac
-fi
-
-if [ -n "${pkg_installer}" ] && command -v agy >/dev/null 2>&1; then
-    if ! "${pkg_installer}" install -g "agy-crew@{{ .packages.agy_crew }}"; then
-        echo "Warning: could not install agy-crew; skipping omp skill linking." >&2
-    else
-        if [ -x "${HOME}/.local/bin/mise" ]; then
-            "${HOME}/.local/bin/mise" reshim || true
-        fi
-
-        if command -v agy-crew >/dev/null 2>&1; then
-            agy-crew install --hosts omp || true
-        elif [ -x "${HOME}/.local/bin/mise" ]; then
-            "${HOME}/.local/bin/mise" exec -- agy-crew install --hosts omp || true
-        fi
-    fi
-else
-    echo "Skipping agy-crew skill linking: bun/npm or agy is not on PATH."
-fi
 
 # Worktrunk plugins for omp and Claude Code
 wt_bin=""

@@ -145,8 +145,7 @@ for mise_tool in \
     'aqua:astral-sh/uv' \
     'aqua:mikefarah/yq' \
     'github:doy/rbw' \
-    'pipx:copier' \
-    'npm:agy-crew'; do
+    'pipx:copier'; do
     if ! grep -q "${mise_tool}" "${rendered_mise_config}"; then
         echo "dot_config/mise/config.toml.tmpl does not render ${mise_tool}" >&2
         exit 1
@@ -160,10 +159,6 @@ chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/dot_config/mise/config.toml.tmpl" > "${server_mise_config}"
 if grep -q "npm:@oh-my-pi/pi-coding-agent" "${server_mise_config}"; then
     echo "Server profile unexpectedly rendered omp!" >&2
-    exit 1
-fi
-if grep -q "npm:agy-crew" "${server_mise_config}"; then
-    echo "Server profile unexpectedly rendered agy-crew!" >&2
     exit 1
 fi
 if ! grep -q "aqua:BurntSushi/ripgrep" "${server_mise_config}"; then
@@ -540,7 +535,6 @@ fd_version="$(read_pin fd)"
 git_delta_version="$(read_pin git_delta)"
 mise_version="$(read_pin mise)"
 just_version="$(read_pin just)"
-agy_crew_version="$(read_pin agy_crew)"
 omp_version="$(read_pin omp)"
 nerd_fonts_version="$(read_pin nerd_fonts)"
 for required_pin in \
@@ -550,7 +544,6 @@ for required_pin in \
     git_delta_version \
     mise_version \
     just_version \
-    agy_crew_version \
     omp_version \
     nerd_fonts_version; do
     if [ -z "${!required_pin}" ]; then
@@ -594,7 +587,6 @@ done
 echo "==> Verify pinned Tier-1 CLI release assets"
 tier1_urls=(
     "https://github.com/jdx/mise/releases/download/v${mise_version}/mise-v${mise_version}-linux-x64-musl.tar.gz"
-    "https://registry.npmjs.org/agy-crew/-/agy-crew-${agy_crew_version}.tgz"
     "https://github.com/ryanoasis/nerd-fonts/releases/download/v${nerd_fonts_version}/CascadiaCode.zip"
 )
 for url in "${tier1_urls[@]}"; do

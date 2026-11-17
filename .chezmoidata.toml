@@ -40,8 +40,6 @@ uv = "0.13.5"
 yq = "4.54.1"
 # renovate: datasource=pypi depName=copier
 copier = "9.19.1"
-# renovate: datasource=npm depName=agy-crew
-agy_crew = "0.9.7"
 # Default language toolchain for project scaffolding (Flipper/ufbt, etc.
 # live in separate repos; they consume this via mise.toml / pip).
 python = "3.12"

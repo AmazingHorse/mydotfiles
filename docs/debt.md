@@ -31,7 +31,18 @@ Tracked shims, temporary bridges, and planned upstream replacements.
 - **Scope:** consolidate JS runtime/package operations on `bun` where it is already pinned (`{{ .packages.bun }}` via mise global).
 - **Current state (2026-11):**
   - `omp` already *runs* under bun: the `aube-bin-shim` wrapper `exec`s `dist/cli.js` via `bun` (`bun` is pinned partly for this). The `npm:` mise backend remains the only viable *install* path — no `bun:` backend exists in mise.
-  - `run_onchange_after_link-agent-skills.sh.tmpl` already prefers `bun install -g` for `agy-crew` (npm fallback).
   - `scripts/omp-permissions.test.ts` runs under `bun test`.
 - **Remaining candidates:** any lingering `npm`/`npx`/`node` call sites in `scripts/`, `.chezmoiscripts/` (non-bun fallbacks), `dot_justfile`, and Windows PowerShell install paths; evaluate whether the `node` global pin is still required or only kept for tooling that genuinely needs it.
 - **Constraint:** keep `npm:`-backend pins in `dot_config/mise/config.toml.tmpl` — backend choice ≠ runtime. Verify `bun` shim resolution on Windows before dropping node anywhere.
+
+## 7. agy-crew / omp–Antigravity Decoupling — Per-Host Cleanup
+- **Why it exists:** `agy-crew` and all omp→Antigravity wiring were removed for ToS compliance, but `chezmoi apply` cannot delete live state (installed package copies, skill symlinks, merged config keys).
+- **Per host, after `git pull` + `chezmoi apply`:**
+  ```bash
+  rm -f ~/.omp/agent/skills/agy-crew-*
+  rm -rf ~/.agy-crew
+  bun remove -g agy-crew 2>/dev/null; npm uninstall -g agy-crew 2>/dev/null
+  mise uninstall npm:agy-crew 2>/dev/null
+  ```
+  Then edit `~/.omp/agent/config.yml`: delete `agy_query: allow` and any `google-antigravity/*` entries under `modelPresets:` / `modelRoles:`.
+- **Retirement criteria:** delete this entry once every dotfiles host has run the cleanup.

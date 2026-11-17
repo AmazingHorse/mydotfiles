@@ -129,7 +129,7 @@ wtr agent/claude-20261108-143000
 *(Optional: have an AI reviewer critique the diff before merging)*:
 ```bash
 wtr agent/claude-20261108-143000 omp
-# Inside omp, invoke /reviewer or /agy-crew-reviewer
+# Inside omp, invoke /reviewer
 ```
 
 ### Merging with Guaranteed Verification
