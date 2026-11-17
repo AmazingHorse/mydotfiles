@@ -45,16 +45,13 @@ Designed to be self-contained and dependency-free (`node:fs`, `node:path`, `node
    - **Protected Agent Configs:** Blocks silent reads or writes to `.omp/permissions*.json`, `~/.omp/agent/**`, `.claude/**`, and `.devin/**` to prevent agent self-escalation.
    - **Interpreter & Flag Guards:** Gates `bash -c`, `sh -c`, `python -c`, `find -exec/-delete`, `git -c`, and dangerous flags (`--pre`, `--exec`, `--upload-pack`).
 
-5. **Context Window Protection**
-   - Automatically truncates oversized `toolResult` payloads (>20,000 chars) down to 10,000 chars with a `[bootstrap-guard: truncated N chars]` marker so runaway log dumps do not exhaust context.
-
 ---
 
 ## File Layout
 
 | File | Responsibility |
 | :--- | :--- |
-| `index.ts` | omp extension entrypoint (`tool_call` & `tool_result` hooks, interactive prompt flow, `/permissions` command, write-target checks) |
+| `index.ts` | omp extension entrypoint (`tool_call` hook, interactive prompt flow, `/permissions` command, write-target checks) |
 | `evaluate.ts` | Pure command evaluation engine (calculates `allow` / `ask` / `deny` / `unmatched` verdicts and security check reasons) |
 | `hook.ts` | Cross-harness `PreToolUse` hook CLI for Claude Code and Devin CLI (enforces deny rules and hard checks; never approves) |
 | `parser.ts` | Single-pass shell lexer: quotes, escapes, redirections, heredocs, compound operators, substitution detection |

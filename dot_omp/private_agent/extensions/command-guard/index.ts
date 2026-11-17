@@ -64,10 +64,6 @@ export type {
 	CommandVerdict,
 };
 
-const KEEP_RECENT_MESSAGES = 6;
-const TRUNCATE_THRESHOLD = 800;
-const TRUNCATE_TO = 400;
-const TRUNCATION_MARKER = "[command-guard: truncated ";
 const FILE_WRITE_TOOLS: Record<string, true> = {
 	write: true,
 	edit: true,
@@ -312,60 +308,6 @@ async function handleBashCall(
 	});
 }
 
-function compactToolResult(message: unknown): unknown {
-	if (typeof message !== "object" || message === null) return message;
-
-	const record = message as Record<string, unknown>;
-	if (record.role !== "toolResult") return message;
-
-	if (typeof record.content === "string") {
-		const text = record.content;
-		if (text.length <= TRUNCATE_THRESHOLD || text.includes(TRUNCATION_MARKER)) return message;
-		return {
-			...record,
-			content: `${text.slice(0, TRUNCATE_TO)}\n…${TRUNCATION_MARKER}${text.length - TRUNCATE_TO} chars]`,
-		};
-	}
-
-	if (!Array.isArray(record.content)) return message;
-	const textBlocks = record.content.filter(
-		(block): block is { type: "text"; text: string } =>
-			typeof block === "object" &&
-			block !== null &&
-			"type" in block &&
-			block.type === "text" &&
-			"text" in block &&
-			typeof block.text === "string",
-	);
-	const joinedText = textBlocks.map(block => block.text).join("\n");
-	const textLength = textBlocks.reduce((length, block) => length + block.text.length, 0);
-	if (textLength <= TRUNCATE_THRESHOLD || joinedText.includes(TRUNCATION_MARKER)) return message;
-
-	const compactedContent: unknown[] = [];
-	let insertedSummary = false;
-	for (const block of record.content) {
-		if (
-			typeof block === "object" &&
-			block !== null &&
-			"type" in block &&
-			block.type === "text" &&
-			typeof block.text === "string"
-		) {
-			if (!insertedSummary) {
-				compactedContent.push({
-					...block,
-					text: `${joinedText.slice(0, TRUNCATE_TO)}\n…${TRUNCATION_MARKER}${joinedText.length - TRUNCATE_TO} chars]`,
-				});
-				insertedSummary = true;
-			}
-		} else {
-			compactedContent.push(block);
-		}
-	}
-
-	return { ...record, content: compactedContent };
-}
-
 function unwrapHashlinePath(rawPath: string): string {
 	const wrapped = /^\[(.+?)(?:#[A-Za-z0-9]+)?\]$/u.exec(rawPath.trim());
 	return wrapped ? wrapped[1] : rawPath.trim();
@@ -481,18 +423,5 @@ export default function (pi: ExtensionAPI) {
 				reason: `Blocked by command-guard: write target outside workspace (${stillOutside[0]})`,
 			};
 		});
-	});
-
-	pi.on("context", async event => {
-		const messages = event.messages;
-		if (messages.length <= KEEP_RECENT_MESSAGES) return;
-
-		const cutoff = messages.length - KEEP_RECENT_MESSAGES;
-		const compacted = messages.map((msg, index) => {
-			if (index >= cutoff) return msg;
-			return compactToolResult(msg);
-		});
-
-		return { messages: compacted };
 	});
 }
