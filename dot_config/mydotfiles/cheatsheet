@@ -21,7 +21,7 @@ Tool versions & runtimes (mise)
   mise ls / mise ls-remote <tool>
   mise install                install tools from global config / project mise.toml
   mise exec -- <cmd>          run with project tool versions
-  Global pins: python, node, bun, omp, agy-crew, copier, rg, fd, delta, zoxide,
+  Global pins: python, node, bun, omp, copier, rg, fd, delta, zoxide,
                just, uv, yq, fnox, rbw (Linux) / bw (Win), betterleaks
   Optional toolsets (.chezmoidata.toml): infra (tofu, kubectl), containers (helm), rust
   Profiles: workstation (default), server (no AI tools), ephemeral (containers)
@@ -70,7 +70,6 @@ omp Power-User Guide (TUI, Subagents, URIs & Tools)
     xd://ast_edit             syntax-aware structural codemods & refactors
     xd://debug                attach DAP debugger to inspect failing test frames
     eval (py / js)            stateful Python & Bun kernel + headless Chromium (browser)
-    agy-crew                  /agy-crew-ask, /agy-crew-reviewer, /agy-crew-implementer
 
 Project scaffolding (Copier — default ref: v0.1.0)
   just -g new <dir> [--archetype infra-ops] [--company <name>] [--ref <tag>]
