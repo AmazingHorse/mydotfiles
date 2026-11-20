@@ -10,7 +10,7 @@ When orchestrating multi-agent workflows across **omp**, **Claude Code**, and **
 - **Disk write side effects:** Eager mirroring caused disk writes to committed repo files on routine permission checks.
 
 ## Decision
-Transition `command-guard` from an eager file-mirroring sync to a **unified policy engine with native PreToolUse hooks**:
+Transition `command-guard` (now maintained in pinned `AmazingHorse/friend-programmer` under `packages/guard/` and installed via `install.sh --only guard`) from an eager file-mirroring sync to a **unified policy engine with native PreToolUse hooks**:
 1. **Unified Hook (`hook.ts`):** Register `command-guard/hook.ts` as a `PreToolUse` hook in `~/.claude/settings.json` (automatically imported by Devin CLI). It intercepts tool calls (`Bash` for Claude, `exec` for Devin).
 2. **Never-Approve Policy:** The hook enforces `deny` rules and hard security checks (`bash -c`, `$()`, `git -c`, workspace escapes, protected config). It never approves plain prefixes, allowing each harness's native rules and interactive prompts to govern standard approvals.
 3. **Allowlist Mirroring as Pure Convenience:** Mirroring is restricted strictly to `allow` command prefixes in machine-local files (`.claude/settings.local.json`, `.devin/config.local.json`, `.omp/permissions.local.json`). Committed files (`project` scope) are strictly read-only.

@@ -111,17 +111,21 @@ fi
 echo "==> Verify Linux run-script renders"
 rendered_install_script="${render_directory}/install-packages.sh"
 rendered_skill_script="${render_directory}/link-agent-skills.sh"
+rendered_fp_script="${render_directory}/install-fp.sh"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/.chezmoiscripts/run_onchange_after_install-packages.sh.tmpl" \
     > "${rendered_install_script}"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/.chezmoiscripts/run_onchange_after_link-agent-skills.sh.tmpl" \
     > "${rendered_skill_script}"
+chezmoi execute-template --file --source="${repository_root}" \
+    "${repository_root}/.chezmoiscripts/run_after_install-fp.sh.tmpl" \
+    > "${rendered_fp_script}"
 rendered_notice_script="${render_directory}/zz-wsl-notice.sh"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/.chezmoiscripts/run_after_zz-wsl-notice.sh.tmpl" \
     > "${rendered_notice_script}"
-for s in "${rendered_install_script}" "${rendered_skill_script}" "${rendered_notice_script}"; do
+for s in "${rendered_install_script}" "${rendered_skill_script}" "${rendered_fp_script}" "${rendered_notice_script}"; do
     if [[ -s "${s}" ]]; then
         bash -n "${s}"
         if command -v shellcheck >/dev/null 2>&1; then
@@ -194,6 +198,7 @@ chezmoi execute-template --file --source="${repository_root}" \
 for script_template in \
     .chezmoiscripts/run_onchange_after_install-packages.sh.tmpl \
     .chezmoiscripts/run_onchange_after_link-agent-skills.sh.tmpl \
+    .chezmoiscripts/run_after_install-fp.sh.tmpl \
     .chezmoiscripts/run_after_zz-wsl-notice.sh.tmpl; do
     windows_render="${render_directory}/$(basename "${script_template}").windows"
     chezmoi execute-template --file --source="${repository_root}" \
@@ -207,7 +212,6 @@ done
 
 echo "==> Verify agent configuration files"
 python3 -m json.tool dot_omp/private_agent/mcp.json >/dev/null
-python3 -m json.tool dot_omp/private_agent/permissions.defaults.json >/dev/null
 echo "==> Verify secrets scanning"
 if command -v betterleaks >/dev/null 2>&1; then
     betterleaks dir --no-banner --redact .
@@ -258,9 +262,6 @@ if command -v bun >/dev/null 2>&1; then
             process.exit(1);
         }
     '
-fi
-if command -v bun >/dev/null 2>&1; then
-    bun test scripts/omp-permissions.test.ts
 fi
 if command -v just >/dev/null 2>&1; then
     just --justfile dot_justfile --list >/dev/null

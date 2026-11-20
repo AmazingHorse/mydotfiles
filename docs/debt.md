@@ -2,8 +2,8 @@
 
 Tracked shims, temporary bridges, and planned upstream replacements.
 
-## 1. Cross-Harness Bash Permission Shim and PreToolUse Hook (`command-guard`) (moved into friend-programmer)
-- **Location:** `dot_omp/private_agent/extensions/command-guard/`
+## 1. Cross-Harness Bash Permission Shim and PreToolUse Hook (`command-guard`) (relocated to `AmazingHorse/friend-programmer`)
+- **Location:** Pinned via `.chezmoidata.toml` (`packages.friend_programmer`) → `~/.local/share/friend-programmer/packages/guard/`, installed to `~/.omp/agent/extensions/command-guard/` by `.chezmoiscripts/run_after_install-fp.sh.tmpl` (`install.sh --only guard`).
 - **Why it exists:** AI coding harnesses (omp, Claude Code, Devin CLI) have fragmented and uneven security primitives. Hard security checks (`bash -c`, command substitution `$()`, `git -c`, workspace escapes, protected agent configs) lack declarative schema representation in Claude and Devin settings. `command-guard` provides a unified policy engine in omp and a `PreToolUse` hook CLI (`hook.ts`) for Claude and Devin.
 - **Retirement criteria:** Retire when native PreToolUse hook protocols and granular per-command approval rules are standardized and natively supported across all three coding agent harnesses, or when all runs are sandboxed at the OS container layer.
 ## 2. Windows WSL Font Propagation

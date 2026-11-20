@@ -218,6 +218,12 @@ if [ "${upload_with_gh}" -eq 1 ]; then
     fi
     gh ssh-key add "${public_key_path}" --title "${key_title}"
     echo "Uploaded public key to GitHub as ${key_title}"
+    if command -v chezmoi >/dev/null 2>&1 && [ ! -f "${HOME}/.local/share/fp/.installed-version" ]; then
+        echo "Applying pending private dotfiles dependencies (chezmoi apply --include=scripts)..."
+        if ! chezmoi apply --include=scripts; then
+            echo "Warning: chezmoi apply did not finish; run 'chezmoi apply' manually to install private dependencies." >&2
+        fi
+    fi
 fi
 
 if [ "${upload_with_gl}" -eq 1 ]; then
