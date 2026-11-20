@@ -329,4 +329,8 @@ if [ "$RUN_SETUP_SSH" -eq 1 ]; then
     fi
 fi
 
+if [ ! -f "${HOME}/.local/share/fp/.installed-version" ]; then
+    echo "Note: private dependencies (friend-programmer) are pending GitHub auth — run 'setup-ssh.sh --gh' then 'chezmoi apply'."
+fi
+
 echo "Done. Open a new shell or run: exec zsh"

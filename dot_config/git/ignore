@@ -18,3 +18,6 @@ Desktop.ini
 plans/*.local.md
 docs/plans/*.local.md
 .omp/permissions.local.json
+.fp/
+.claude/settings.local.json
+.devin/config.local.json
