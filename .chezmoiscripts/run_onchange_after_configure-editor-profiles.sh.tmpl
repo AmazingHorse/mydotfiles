@@ -1,0 +1,140 @@
+{{ if and (eq .chezmoi.os "linux") (ne .profile "server") -}}
+#!/usr/bin/env bash
+# Non-destructively merge shared base settings into installed VS Code-family editors
+# (native Linux desktop configs and WSL/SSH remote server configs).
+# base settings hash: {{ include "dot_local/share/mydotfiles/editor-settings.json" | sha256sum }}
+set -euo pipefail
+
+target_home="${MYDOTFILES_EDITOR_HOME:-${HOME}}"
+base_settings="${MYDOTFILES_EDITOR_SETTINGS_FILE:-${target_home}/.local/share/mydotfiles/editor-settings.json}"
+
+if [ ! -f "${base_settings}" ]; then
+    echo "Skipping editor profile sync: ${base_settings} not found." >&2
+    exit 0
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "Skipping editor profile sync: python3 not found." >&2
+    exit 0
+fi
+
+python3 - "${target_home}" "${base_settings}" <<'PY'
+import json
+import os
+import sys
+import tempfile
+
+home = sys.argv[1]
+base_path = sys.argv[2]
+
+with open(base_path, "r", encoding="utf-8") as fh:
+    managed = json.load(fh)
+
+
+def has_jsonc_comments(text: str) -> bool:
+    in_string = False
+    escaped = False
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] in ("/", "*"):
+            return True
+        i += 1
+    return False
+
+
+def merge_settings_file(path: str) -> None:
+    existing = {}
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = fh.read()
+        if raw.strip():
+            if has_jsonc_comments(raw):
+                print(
+                    f"Warning: {path} contains JSONC comments; skipping automated merge to avoid stripping comments.",
+                    file=sys.stderr,
+                )
+                return
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                print(
+                    f"Warning: could not parse {path} as JSON ({exc}); skipping.",
+                    file=sys.stderr,
+                )
+                return
+            if not isinstance(parsed, dict):
+                print(
+                    f"Warning: {path} root is not a JSON object; skipping.",
+                    file=sys.stderr,
+                )
+                return
+            existing = parsed
+
+    merged = dict(existing)
+    changed = False
+    for key, value in managed.items():
+        if key not in merged or merged[key] != value:
+            merged[key] = value
+            changed = True
+
+    if not changed and os.path.exists(path):
+        return
+
+    parent = os.path.dirname(path)
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".settings.", suffix=".tmp", dir=parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(merged, fh, indent=2)
+            fh.write("\n")
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+    print(f"Updated editor profile: {path}")
+
+
+config_root = os.path.join(home, ".config")
+native_editors = (
+    "Code",
+    "Code - Insiders",
+    "Cursor",
+    "Devin",
+    "Antigravity",
+    "Antigravity IDE",
+    "VSCodium",
+)
+for editor in native_editors:
+    editor_dir = os.path.join(config_root, editor)
+    if os.path.isdir(editor_dir):
+        merge_settings_file(os.path.join(editor_dir, "User", "settings.json"))
+
+remote_servers = (
+    ".vscode-server",
+    ".cursor-server",
+    ".devin-server",
+    ".antigravity-server",
+)
+for server_name in remote_servers:
+    server_dir = os.path.join(home, server_name)
+    if os.path.isdir(server_dir):
+        for subdir in ("User", "Machine"):
+            merge_settings_file(os.path.join(server_dir, "data", subdir, "settings.json"))
+PY
+{{ end -}}

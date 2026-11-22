@@ -1,0 +1,112 @@
+{{ if and (eq .chezmoi.os "windows") (ne .profile "server") -}}
+# Non-destructively merge shared base settings into installed Windows VS Code-family editors.
+# base settings hash: {{ include "dot_local/share/mydotfiles/editor-settings.json" | sha256sum }}
+
+$ErrorActionPreference = 'Stop'
+
+$EditorSettingsPath = Join-Path $HOME '.local\share\mydotfiles\editor-settings.json'
+if (-not (Test-Path -LiteralPath $EditorSettingsPath)) {
+    Write-Warning "Skipping editor profile sync: $EditorSettingsPath not found."
+    return
+}
+
+$AppDataDirectory = [Environment]::GetFolderPath('ApplicationData')
+if (-not $AppDataDirectory) {
+    return
+}
+
+function Test-JsonHasComments {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Text
+    )
+
+    $inString = $false
+    $escaped = $false
+    $length = $Text.Length
+    for ($i = 0; $i -lt $length; $i++) {
+        $ch = $Text[$i]
+        if ($inString) {
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq '\') {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+        if ($ch -eq '"') {
+            $inString = $true
+            continue
+        }
+        if ($ch -eq '/' -and ($i + 1) -lt $length) {
+            $next = $Text[$i + 1]
+            if ($next -eq '/' -or $next -eq '*') {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
+$ManagedSettings = Get-Content -LiteralPath $EditorSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+$KnownEditors = @(
+    'Code',
+    'Code - Insiders',
+    'Cursor',
+    'Devin',
+    'Antigravity',
+    'Antigravity IDE',
+    'VSCodium'
+)
+
+foreach ($Editor in $KnownEditors) {
+    $EditorDir = Join-Path $AppDataDirectory $Editor
+    if (-not (Test-Path -LiteralPath $EditorDir)) {
+        continue
+    }
+
+    $UserDir = Join-Path $EditorDir 'User'
+    $SettingsPath = Join-Path $UserDir 'settings.json'
+
+    try {
+        $Existing = [pscustomobject]@{}
+        $FileExists = Test-Path -LiteralPath $SettingsPath
+        if ($FileExists) {
+            $Raw = Get-Content -LiteralPath $SettingsPath -Raw -Encoding UTF8 -ErrorAction Stop
+            if (-not [string]::IsNullOrWhiteSpace($Raw)) {
+                if (Test-JsonHasComments -Text $Raw) {
+                    Write-Warning "Editor settings for $Editor at '$SettingsPath' contains JSONC comments; skipping automated merge to prevent comment loss."
+                    continue
+                }
+                $Existing = ConvertFrom-Json -InputObject $Raw -ErrorAction Stop
+            }
+        }
+
+        $Changed = -not $FileExists
+        foreach ($Prop in $ManagedSettings.PSObject.Properties) {
+            $ExistingProp = $Existing.PSObject.Properties[$Prop.Name]
+            if ($null -eq $ExistingProp -or ($ExistingProp.Value -ne $Prop.Value)) {
+                $Existing | Add-Member -NotePropertyName $Prop.Name -NotePropertyValue $Prop.Value -Force
+                $Changed = $true
+            }
+        }
+
+        if (-not $Changed) {
+            continue
+        }
+
+        if (-not (Test-Path -LiteralPath $UserDir)) {
+            New-Item -ItemType Directory -Force -Path $UserDir | Out-Null
+        }
+        $JsonContent = $Existing | ConvertTo-Json -Depth 32
+        [System.IO.File]::WriteAllText($SettingsPath, $JsonContent + "`n", $Utf8NoBom)
+        Write-Host "Updated editor profile: $SettingsPath"
+    } catch {
+        Write-Warning "Could not merge editor settings for $Editor at '$SettingsPath': $($_.Exception.Message)"
+    }
+}
+{{ end -}}

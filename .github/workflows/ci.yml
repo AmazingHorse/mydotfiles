@@ -73,6 +73,7 @@ jobs:
 
           $templateFiles = @(
             '.chezmoiscripts/run_once_before_migrate-ssh-config.ps1.tmpl'
+            '.chezmoiscripts/run_onchange_after_configure-editor-profiles.ps1.tmpl'
             '.chezmoiscripts/run_onchange_after_configure-terminal-bell.ps1.tmpl'
             '.chezmoiscripts/run_onchange_after_install-packages.ps1.tmpl'
           )

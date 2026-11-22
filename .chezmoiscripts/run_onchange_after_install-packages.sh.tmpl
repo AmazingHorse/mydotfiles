@@ -331,22 +331,6 @@ ensure_pinned_nerd_fonts() {
     fi
 }
 
-configure_remote_editor_fonts() {
-    local srv
-    for srv in "${HOME}/.vscode-server" "${HOME}/.cursor-server" "${HOME}/.devin-server" "${HOME}/.antigravity-server"; do
-        if [[ -d "${srv}" ]]; then
-            local subdir
-            for subdir in User Machine; do
-                mkdir -p "${srv}/data/${subdir}"
-                local settings_file="${srv}/data/${subdir}/settings.json"
-                if [[ ! -f "${settings_file}" ]]; then
-                    printf '{\n  "terminal.integrated.fontFamily": "\x27CaskaydiaCove NF\x27, \x27CaskaydiaCove Nerd Font\x27"\n}\n' > "${settings_file}"
-                fi
-            done
-        fi
-    done
-}
-
 is_apt_package_installed() {
     local package_name="$1"
     [ "$(dpkg-query -W -f='${Status}' "${package_name}" 2>/dev/null || true)" = 'install ok installed' ]
@@ -420,7 +404,6 @@ ensure_pinned_cli_tools
 {{ if ne .profile "server" -}}
 ensure_agy
 ensure_pinned_nerd_fonts "${preferred_nerd_fonts_version}"
-configure_remote_editor_fonts
 {{ end -}}
 if ! "${install_directory}/mise" install --yes; then
     echo "Warning: mise could not install global tools." >&2

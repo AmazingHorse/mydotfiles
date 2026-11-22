@@ -118,6 +118,7 @@ Git (delta pager is automatic)
 
 Editor / pager
   $EDITOR   preferred-editor (Cursor → Antigravity → VS Code → nvim/vim/vi)
+  Profile   ~/.local/share/mydotfiles/editor-settings.json (non-destructively merged into installed VS Code-family editors)
   PAGER     less -FRX when available
 
 SSH

@@ -1,0 +1,17 @@
+{
+  "editor.fontFamily": "'CaskaydiaCove NF', 'CaskaydiaCove Nerd Font', monospace",
+  "editor.fontLigatures": true,
+  "editor.renderWhitespace": "boundary",
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": "active",
+  "terminal.integrated.fontFamily": "'CaskaydiaCove NF', 'CaskaydiaCove Nerd Font'",
+  "terminal.integrated.scrollback": 10000,
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "diffEditor.ignoreTrimWhitespace": false,
+  "git.autofetch": "all",
+  "git.confirmSync": false,
+  "git.pruneOnFetch": true,
+  "telemetry.telemetryLevel": "off"
+}

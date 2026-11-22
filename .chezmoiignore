@@ -43,6 +43,7 @@ types/
 .omp/
 .config/agent-secrets.env
 .local/share/mydotfiles/configure-terminal-fonts.ps1
+.local/share/mydotfiles/editor-settings.json
 {{- end }}
 
 {{- $vaultUnlocked := false -}}

@@ -58,7 +58,7 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 
 ## What you get
 
-- zsh/bash + shared helpers; preferred-editor chain (`Cursor → Antigravity → VS Code → nvim/vim/vi`)
+- zsh/bash + shared helpers; preferred-editor chain (`Cursor → Antigravity → VS Code → nvim/vim/vi`) and shared non-destructive VS Code-family profile (`dot_local/share/mydotfiles/editor-settings.json` synced to installed Antigravity, Devin, Cursor, and VS Code profiles across Linux, WSL2 remote servers, and Windows)
 - Oh My Posh + Everforest + CaskaydiaCove Nerd Font; PowerShell 7 profile on Windows
 - Pinned CLI stack via `mise`: `zoxide`, `rg`, `fd`, `delta`, `just`, `uv`, `yq`, `fnox`, `betterleaks`, plus `rbw` (Linux/WSL) / `bw` (Windows); `fzf` shell helpers
 - AI & project tooling (`workstation` / `ephemeral` profiles): Python, Node, Bun, Oh My Pi (`omp`), T3 Code (`t3`), and `copier` via `mise`; Antigravity CLI (`agy`) on Linux/WSL via official installer to `~/.local/bin` (standalone; not wired into omp)
