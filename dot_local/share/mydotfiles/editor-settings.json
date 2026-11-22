@@ -11,7 +11,7 @@
   "terminal.integrated.defaultLocation": "editor",
   "terminal.integrated.fontFamily": "'CaskaydiaCove NF', 'CaskaydiaCove Nerd Font'",
   "terminal.integrated.scrollback": 10000,
-  "files.autoSave": "onFocusChange",
+  "files.autoSave": "off",
   "files.eol": "\n",
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
