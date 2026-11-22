@@ -21,7 +21,7 @@ Tool versions & runtimes (mise)
   mise ls / mise ls-remote <tool>
   mise install                install tools from global config / project mise.toml
   mise exec -- <cmd>          run with project tool versions
-  Global pins: python, node, bun, omp, copier, rg, fd, delta, zoxide,
+  Global pins: python, node, bun, omp, t3, copier, rg, fd, delta, zoxide,
                just, uv, yq, fnox, rbw (Linux) / bw (Win), betterleaks
   Optional toolsets (.chezmoidata.toml): infra (tofu, kubectl), containers (helm), rust
   Profiles: workstation (default), server (no AI tools), ephemeral (containers)

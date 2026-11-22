@@ -149,6 +149,7 @@ for mise_tool in \
     'aqua:astral-sh/uv' \
     'aqua:mikefarah/yq' \
     'github:doy/rbw' \
+    'npm:t3' \
     'pipx:copier'; do
     if ! grep -q "${mise_tool}" "${rendered_mise_config}"; then
         echo "dot_config/mise/config.toml.tmpl does not render ${mise_tool}" >&2
@@ -163,6 +164,10 @@ chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/dot_config/mise/config.toml.tmpl" > "${server_mise_config}"
 if grep -q "npm:@oh-my-pi/pi-coding-agent" "${server_mise_config}"; then
     echo "Server profile unexpectedly rendered omp!" >&2
+    exit 1
+fi
+if grep -q '"npm:t3"' "${server_mise_config}"; then
+    echo "Server profile unexpectedly rendered t3code!" >&2
     exit 1
 fi
 if ! grep -q "aqua:BurntSushi/ripgrep" "${server_mise_config}"; then
@@ -537,6 +542,7 @@ git_delta_version="$(read_pin git_delta)"
 mise_version="$(read_pin mise)"
 just_version="$(read_pin just)"
 omp_version="$(read_pin omp)"
+t3code_version="$(read_pin t3code)"
 nerd_fonts_version="$(read_pin nerd_fonts)"
 for required_pin in \
     zoxide_version \
@@ -546,6 +552,7 @@ for required_pin in \
     mise_version \
     just_version \
     omp_version \
+    t3code_version \
     nerd_fonts_version; do
     if [ -z "${!required_pin}" ]; then
         echo "Could not read packages pin for ${required_pin}" >&2
@@ -601,10 +608,11 @@ for url in "${tier1_urls[@]}"; do
     esac
 done
 
-echo "==> Verify agy installer and omp npm package URLs"
+echo "==> Verify agy installer and npm package URLs"
 for url in \
     "https://antigravity.google/cli/install.sh" \
-    "https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/${omp_version}"; do
+    "https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/${omp_version}" \
+    "https://registry.npmjs.org/t3/${t3code_version}"; do
     http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
     case "${http_status}" in
         200|302) ;;

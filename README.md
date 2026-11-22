@@ -61,7 +61,7 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 - zsh/bash + shared helpers; preferred-editor chain (`Cursor → Antigravity → VS Code → nvim/vim/vi`)
 - Oh My Posh + Everforest + CaskaydiaCove Nerd Font; PowerShell 7 profile on Windows
 - Pinned CLI stack via `mise`: `zoxide`, `rg`, `fd`, `delta`, `just`, `uv`, `yq`, `fnox`, `betterleaks`, plus `rbw` (Linux/WSL) / `bw` (Windows); `fzf` shell helpers
-- AI & project tooling (`workstation` / `ephemeral` profiles): Python, Node, Bun, Oh My Pi (`omp`), and `copier` via `mise`; Antigravity CLI (`agy`) on Linux/WSL via official installer to `~/.local/bin` (standalone; not wired into omp)
+- AI & project tooling (`workstation` / `ephemeral` profiles): Python, Node, Bun, Oh My Pi (`omp`), T3 Code (`t3`), and `copier` via `mise`; Antigravity CLI (`agy`) on Linux/WSL via official installer to `~/.local/bin` (standalone; not wired into omp)
 - Optional `mise` toolsets (`.chezmoidata.toml` / `~/.config/chezmoi/chezmoi.toml`): `infra` (`opentofu`, `kubectl`), `containers` (`helm`), `rust` (`cargo-binstall`)
 - Machine profiles: `workstation` (default), `server` (headless/minimal CLI), `ephemeral` (containers/Codespaces)
 - Git defaults + machine-local identity + `betterleaks` pre-commit hook

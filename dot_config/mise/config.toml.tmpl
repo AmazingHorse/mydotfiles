@@ -24,6 +24,7 @@ bun = "{{ .packages.bun }}"
 # AI tooling (omitted on server profile)
 {{ if ne .profile "server" -}}
 "npm:@oh-my-pi/pi-coding-agent" = "{{ .packages.omp }}"
+"npm:t3" = "{{ .packages.t3code }}"
 "pipx:copier" = "{{ .packages.copier }}"
 {{ end -}}
 
