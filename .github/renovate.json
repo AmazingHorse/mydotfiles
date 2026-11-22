@@ -5,29 +5,57 @@
   ],
   "semanticCommits": "enabled",
   "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
   "labels": [
     "dependencies"
   ],
   "packageRules": [
     {
+      "description": "Never automerge dependency updates; all bumps are audited before merge.",
+      "matchPackageNames": [
+        "*"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Batch low-risk non-major CLI and toolset bumps into one weekly PR.",
       "matchUpdateTypes": [
         "minor",
         "patch",
         "pin",
         "digest"
       ],
-      "automerge": false
+      "groupName": "cli-tools-non-major",
+      "groupSlug": "cli-tools-non-major",
+      "schedule": [
+        "before 6am on Monday"
+      ]
+    },
+    {
+      "description": "Isolate high-blast-radius bootstrap, prompt, and agent harness pins into individual PRs.",
+      "matchPackageNames": [
+        "twpayne/chezmoi",
+        "jdx/mise",
+        "JanDeDobbeleer/oh-my-posh",
+        "@oh-my-pi/pi-coding-agent",
+        "t3",
+        "AmazingHorse/friend-programmer"
+      ],
+      "groupName": null,
+      "schedule": [
+        "before 6am on Monday"
+      ]
     }
   ],
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": [
-        "^\\.chezmoidata\\.toml$",
-        "^bootstrap\\.sh$"
+      "managerFilePatterns": [
+        "/^\\.chezmoidata\\.toml$/",
+        "/^scripts\\/bootstrap\\.sh$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>[^\\s]+?))(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?\\r?\\n(?:[a-z_]+ = \"|DEFAULT_CHEZMOI_VERSION=')(?<currentValue>[^'\"\\s]+?)['\"]"
+        "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>[^\\s]+?))(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?\\r?\\n(?:[a-z0-9_]+ = \"|DEFAULT_CHEZMOI_VERSION=')(?<currentValue>[^'\"\\s]+?)['\"]"
       ]
     }
   ]

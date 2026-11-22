@@ -67,7 +67,7 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 - Git defaults + machine-local identity + `betterleaks` pre-commit hook
 - Shared `~/.ssh/config` (no private keys)
 
-Pinned versions: `.chezmoidata.toml`. In-shell cheat sheet: **`dots`**
+Pinned versions: `.chezmoidata.toml` (audited weekly via Renovate: non-major CLI bumps batched into one Monday PR; major and core/agent harness bumps isolated with a 7-day release-age gate and PR asset-reachability CI — see [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)). In-shell cheat sheet: **`dots`**
 (same command in zsh/bash and PowerShell). Repo tasks: **`just`** (see
 `justfile`). Global agent/project tasks: **`just -g`** (deployed to `~/.justfile`).
 

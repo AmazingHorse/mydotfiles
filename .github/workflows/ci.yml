@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Install chezmoi and shellcheck
         run: |
@@ -32,8 +34,18 @@ jobs:
             betterleaks dir --no-banner --redact .
           fi
 
-      - name: Run Linux CI checks (fast, network-isolated)
-        run: CI_SKIP_NETWORK=1 bash ./scripts/ci-check.sh
+      - name: Run Linux CI checks
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "${EVENT_NAME}" = "pull_request" ] && [ -n "${BASE_REF}" ] && \
+              git diff --name-only "origin/${BASE_REF}...HEAD" -- .chezmoidata.toml scripts/bootstrap.sh | grep -q .; then
+            echo "Pin files changed in PR; running full CI including live asset reachability."
+            CI_SKIP_NETWORK=0 bash ./scripts/ci-check.sh
+          else
+            CI_SKIP_NETWORK=1 bash ./scripts/ci-check.sh
+          fi
 
       - name: Parse PowerShell scripts
         shell: pwsh
