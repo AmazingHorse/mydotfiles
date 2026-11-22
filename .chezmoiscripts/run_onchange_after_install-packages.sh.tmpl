@@ -71,7 +71,9 @@ ensure_modern_git() {
     fi
 
     ensure_git_core_ppa
-    sudo apt-get update
+    if ! sudo apt-get update; then
+        echo "Warning: apt-get update reported repository errors (stale/untrusted third-party apt sources?); continuing with available indexes." >&2
+    fi
     sudo apt-get install -y git
 
     installed_semver="$(get_git_installed_semver)"
@@ -329,47 +331,72 @@ ensure_pinned_nerd_fonts() {
     fi
 }
 
-configure_remote_editor_fonts() {
-    local srv
-    for srv in "${HOME}/.vscode-server" "${HOME}/.cursor-server" "${HOME}/.devin-server" "${HOME}/.antigravity-server"; do
-        if [[ -d "${srv}" ]]; then
-            local subdir
-            for subdir in User Machine; do
-                mkdir -p "${srv}/data/${subdir}"
-                local settings_file="${srv}/data/${subdir}/settings.json"
-                if [[ ! -f "${settings_file}" ]]; then
-                    printf '{\n  "terminal.integrated.fontFamily": "\x27CaskaydiaCove NF\x27, \x27CaskaydiaCove Nerd Font\x27"\n}\n' > "${settings_file}"
-                fi
-            done
-        fi
-    done
+is_apt_package_installed() {
+    local package_name="$1"
+    [ "$(dpkg-query -W -f='${Status}' "${package_name}" 2>/dev/null || true)" = 'install ok installed' ]
 }
 
-sudo apt-get update
-sudo apt-get install -y \
-    curl \
-    fontconfig \
-    fzf \
-    git-filter-repo \
-    jq \
-    openssh-client \
-    pinentry-curses \
-    shellcheck \
-    software-properties-common \
-    unzip \
-    zsh \
-    zsh-autosuggestions \
-    zsh-syntax-highlighting
-
+ensure_apt_packages() {
+    local required_packages=(
+        curl
+        fontconfig
+        fzf
+        git-filter-repo
+        jq
+        openssh-client
+        pinentry-curses
+        shellcheck
+        software-properties-common
+        unzip
+        zsh
+        zsh-autosuggestions
+        zsh-syntax-highlighting
+    )
 {{ if $isWsl -}}
-if ! sudo apt-get install -y wslu; then
-    echo "Warning: could not install optional WSL browser integration (wslu)." >&2
-fi
+    local optional_packages=(wslu)
+    local optional_label='optional WSL browser integration (wslu)'
 {{ else -}}
-if ! sudo apt-get install -y xdg-utils wl-clipboard; then
-    echo "Warning: could not install optional native Linux browser/clipboard tools." >&2
-fi
+    local optional_packages=(xdg-utils wl-clipboard)
+    local optional_label='optional native Linux browser/clipboard tools'
 {{ end -}}
+
+    local missing_required=()
+    local missing_optional=()
+    local pkg
+    for pkg in "${required_packages[@]}"; do
+        if ! is_apt_package_installed "${pkg}"; then
+            missing_required+=("${pkg}")
+        fi
+    done
+    for pkg in "${optional_packages[@]}"; do
+        if ! is_apt_package_installed "${pkg}"; then
+            missing_optional+=("${pkg}")
+        fi
+    done
+
+    # Skip apt entirely when all managed system packages are already present so
+    # mise-only updates do not require sudo or fail on unrelated third-party PPAs.
+    if [ "${#missing_required[@]}" -eq 0 ] && [ "${#missing_optional[@]}" -eq 0 ]; then
+        echo "All managed apt packages are already installed; skipping apt-get."
+        return 0
+    fi
+
+    if ! sudo apt-get update; then
+        echo "Warning: apt-get update reported repository errors (stale/untrusted third-party apt sources?); continuing with available indexes." >&2
+    fi
+
+    if [ "${#missing_required[@]}" -gt 0 ]; then
+        sudo apt-get install -y "${missing_required[@]}"
+    fi
+
+    if [ "${#missing_optional[@]}" -gt 0 ]; then
+        if ! sudo apt-get install -y "${missing_optional[@]}"; then
+            echo "Warning: could not install ${optional_label}." >&2
+        fi
+    fi
+}
+
+ensure_apt_packages
 
 ensure_modern_git
 ensure_pinned_oh_my_posh
@@ -377,7 +404,6 @@ ensure_pinned_cli_tools
 {{ if ne .profile "server" -}}
 ensure_agy
 ensure_pinned_nerd_fonts "${preferred_nerd_fonts_version}"
-configure_remote_editor_fonts
 {{ end -}}
 if ! "${install_directory}/mise" install --yes; then
     echo "Warning: mise could not install global tools." >&2

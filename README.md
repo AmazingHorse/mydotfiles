@@ -58,16 +58,16 @@ Preview: `chezmoi update --apply=false` then `chezmoi diff`.
 
 ## What you get
 
-- zsh/bash + shared helpers; preferred-editor chain (`Cursor → Antigravity → VS Code → nvim/vim/vi`)
+- zsh/bash + shared helpers; preferred-editor chain (`Cursor → Antigravity → VS Code → nvim/vim/vi`) and shared non-destructive VS Code-family profile (`dot_local/share/mydotfiles/editor-settings.json` synced to installed Antigravity, Devin, Cursor, and VS Code profiles across Linux, WSL2 remote servers, and Windows)
 - Oh My Posh + Everforest + CaskaydiaCove Nerd Font; PowerShell 7 profile on Windows
 - Pinned CLI stack via `mise`: `zoxide`, `rg`, `fd`, `delta`, `just`, `uv`, `yq`, `fnox`, `betterleaks`, plus `rbw` (Linux/WSL) / `bw` (Windows); `fzf` shell helpers
-- AI & project tooling (`workstation` / `ephemeral` profiles): Python, Node, Bun, Oh My Pi (`omp`), and `copier` via `mise`; Antigravity CLI (`agy`) on Linux/WSL via official installer to `~/.local/bin` (standalone; not wired into omp)
+- AI & project tooling (`workstation` / `ephemeral` profiles): Python, Node, Bun, Oh My Pi (`omp`), T3 Code (`t3`), and `copier` via `mise`; Antigravity CLI (`agy`) on Linux/WSL via official installer to `~/.local/bin` (standalone; not wired into omp)
 - Optional `mise` toolsets (`.chezmoidata.toml` / `~/.config/chezmoi/chezmoi.toml`): `infra` (`opentofu`, `kubectl`), `containers` (`helm`), `rust` (`cargo-binstall`)
 - Machine profiles: `workstation` (default), `server` (headless/minimal CLI), `ephemeral` (containers/Codespaces)
 - Git defaults + machine-local identity + `betterleaks` pre-commit hook
 - Shared `~/.ssh/config` (no private keys)
 
-Pinned versions: `.chezmoidata.toml`. In-shell cheat sheet: **`dots`**
+Pinned versions: `.chezmoidata.toml` (audited weekly via Renovate: non-major CLI bumps batched into one Monday PR; major and core/agent harness bumps isolated with a 7-day release-age gate and PR asset-reachability CI — see [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)). In-shell cheat sheet: **`dots`**
 (same command in zsh/bash and PowerShell). Repo tasks: **`just`** (see
 `justfile`). Global agent/project tasks: **`just -g`** (deployed to `~/.justfile`).
 

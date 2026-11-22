@@ -111,17 +111,25 @@ fi
 echo "==> Verify Linux run-script renders"
 rendered_install_script="${render_directory}/install-packages.sh"
 rendered_skill_script="${render_directory}/link-agent-skills.sh"
+rendered_fp_script="${render_directory}/install-fp.sh"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/.chezmoiscripts/run_onchange_after_install-packages.sh.tmpl" \
     > "${rendered_install_script}"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/.chezmoiscripts/run_onchange_after_link-agent-skills.sh.tmpl" \
     > "${rendered_skill_script}"
+chezmoi execute-template --file --source="${repository_root}" \
+    "${repository_root}/.chezmoiscripts/run_after_install-fp.sh.tmpl" \
+    > "${rendered_fp_script}"
 rendered_notice_script="${render_directory}/zz-wsl-notice.sh"
 chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/.chezmoiscripts/run_after_zz-wsl-notice.sh.tmpl" \
     > "${rendered_notice_script}"
-for s in "${rendered_install_script}" "${rendered_skill_script}" "${rendered_notice_script}"; do
+rendered_editor_profile_script="${render_directory}/configure-editor-profiles.sh"
+chezmoi execute-template --file --source="${repository_root}" \
+    "${repository_root}/.chezmoiscripts/run_onchange_after_configure-editor-profiles.sh.tmpl" \
+    > "${rendered_editor_profile_script}"
+for s in "${rendered_install_script}" "${rendered_skill_script}" "${rendered_fp_script}" "${rendered_notice_script}" "${rendered_editor_profile_script}"; do
     if [[ -s "${s}" ]]; then
         bash -n "${s}"
         if command -v shellcheck >/dev/null 2>&1; then
@@ -145,6 +153,7 @@ for mise_tool in \
     'aqua:astral-sh/uv' \
     'aqua:mikefarah/yq' \
     'github:doy/rbw' \
+    'npm:t3' \
     'pipx:copier'; do
     if ! grep -q "${mise_tool}" "${rendered_mise_config}"; then
         echo "dot_config/mise/config.toml.tmpl does not render ${mise_tool}" >&2
@@ -159,6 +168,10 @@ chezmoi execute-template --file --source="${repository_root}" \
     "${repository_root}/dot_config/mise/config.toml.tmpl" > "${server_mise_config}"
 if grep -q "npm:@oh-my-pi/pi-coding-agent" "${server_mise_config}"; then
     echo "Server profile unexpectedly rendered omp!" >&2
+    exit 1
+fi
+if grep -q '"npm:t3"' "${server_mise_config}"; then
+    echo "Server profile unexpectedly rendered t3code!" >&2
     exit 1
 fi
 if ! grep -q "aqua:BurntSushi/ripgrep" "${server_mise_config}"; then
@@ -194,6 +207,8 @@ chezmoi execute-template --file --source="${repository_root}" \
 for script_template in \
     .chezmoiscripts/run_onchange_after_install-packages.sh.tmpl \
     .chezmoiscripts/run_onchange_after_link-agent-skills.sh.tmpl \
+    .chezmoiscripts/run_onchange_after_configure-editor-profiles.sh.tmpl \
+    .chezmoiscripts/run_after_install-fp.sh.tmpl \
     .chezmoiscripts/run_after_zz-wsl-notice.sh.tmpl; do
     windows_render="${render_directory}/$(basename "${script_template}").windows"
     chezmoi execute-template --file --source="${repository_root}" \
@@ -207,7 +222,68 @@ done
 
 echo "==> Verify agent configuration files"
 python3 -m json.tool dot_omp/private_agent/mcp.json >/dev/null
-python3 -m json.tool dot_omp/private_agent/permissions.defaults.json >/dev/null
+python3 -m json.tool dot_local/share/mydotfiles/editor-settings.json >/dev/null
+
+echo "==> Verify shared editor profile sync"
+server_editor_profile_script="${render_directory}/configure-editor-profiles.server.sh"
+chezmoi execute-template --file --source="${repository_root}" \
+    --override-data '{"profile":"server"}' \
+    "${repository_root}/.chezmoiscripts/run_onchange_after_configure-editor-profiles.sh.tmpl" \
+    > "${server_editor_profile_script}"
+if [ -n "$(tr -d '[:space:]' < "${server_editor_profile_script}")" ]; then
+    echo "Editor profile script should render empty on server profile." >&2
+    exit 1
+fi
+
+editor_fixture_home="${destination_directory}/editor-profile-home"
+mkdir -p \
+    "${editor_fixture_home}/.config/Antigravity/User" \
+    "${editor_fixture_home}/.config/Devin/User" \
+    "${editor_fixture_home}/.antigravity-server"
+cat > "${editor_fixture_home}/.config/Antigravity/User/settings.json" <<'EOF'
+{
+  "custom.apiUrl": "https://example.com/v1",
+  "files.eol": "\r\n"
+}
+EOF
+cat > "${editor_fixture_home}/.config/Devin/User/settings.json" <<'EOF'
+{
+  // preserve user JSONC comment
+  "custom.keep": true
+}
+EOF
+cp "${editor_fixture_home}/.config/Devin/User/settings.json" \
+    "${destination_directory}/devin-jsonc.original"
+
+MYDOTFILES_EDITOR_HOME="${editor_fixture_home}" \
+    MYDOTFILES_EDITOR_SETTINGS_FILE="${repository_root}/dot_local/share/mydotfiles/editor-settings.json" \
+    bash "${rendered_editor_profile_script}" >/dev/null 2>&1
+
+python3 - "${editor_fixture_home}" "${repository_root}/dot_local/share/mydotfiles/editor-settings.json" <<'PY'
+import json, os, sys
+home, base_path = sys.argv[1], sys.argv[2]
+base = json.load(open(base_path, encoding="utf-8"))
+agy = json.load(open(os.path.join(home, ".config/Antigravity/User/settings.json"), encoding="utf-8"))
+assert agy["custom.apiUrl"] == "https://example.com/v1", agy
+for k, v in base.items():
+    assert agy.get(k) == v, (k, agy.get(k), v)
+for sub in ("User", "Machine"):
+    remote = json.load(open(os.path.join(home, f".antigravity-server/data/{sub}/settings.json"), encoding="utf-8"))
+    assert remote == base, (sub, remote)
+assert not os.path.exists(os.path.join(home, ".config/Cursor")), "Uninstalled editor should not be created"
+PY
+cmp "${destination_directory}/devin-jsonc.original" \
+    "${editor_fixture_home}/.config/Devin/User/settings.json"
+
+second_editor_sync="$(
+    MYDOTFILES_EDITOR_HOME="${editor_fixture_home}" \
+        MYDOTFILES_EDITOR_SETTINGS_FILE="${repository_root}/dot_local/share/mydotfiles/editor-settings.json" \
+        bash "${rendered_editor_profile_script}" 2>/dev/null
+)"
+if [ -n "${second_editor_sync}" ]; then
+    echo "Second editor profile sync unexpectedly modified files: ${second_editor_sync}" >&2
+    exit 1
+fi
 echo "==> Verify secrets scanning"
 if command -v betterleaks >/dev/null 2>&1; then
     betterleaks dir --no-banner --redact .
@@ -258,9 +334,6 @@ if command -v bun >/dev/null 2>&1; then
             process.exit(1);
         }
     '
-fi
-if command -v bun >/dev/null 2>&1; then
-    bun test scripts/omp-permissions.test.ts
 fi
 if command -v just >/dev/null 2>&1; then
     just --justfile dot_justfile --list >/dev/null
@@ -536,6 +609,7 @@ git_delta_version="$(read_pin git_delta)"
 mise_version="$(read_pin mise)"
 just_version="$(read_pin just)"
 omp_version="$(read_pin omp)"
+t3code_version="$(read_pin t3code)"
 nerd_fonts_version="$(read_pin nerd_fonts)"
 for required_pin in \
     zoxide_version \
@@ -545,6 +619,7 @@ for required_pin in \
     mise_version \
     just_version \
     omp_version \
+    t3code_version \
     nerd_fonts_version; do
     if [ -z "${!required_pin}" ]; then
         echo "Could not read packages pin for ${required_pin}" >&2
@@ -600,10 +675,11 @@ for url in "${tier1_urls[@]}"; do
     esac
 done
 
-echo "==> Verify agy installer and omp npm package URLs"
+echo "==> Verify agy installer and npm package URLs"
 for url in \
     "https://antigravity.google/cli/install.sh" \
-    "https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/${omp_version}"; do
+    "https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/${omp_version}" \
+    "https://registry.npmjs.org/t3/${t3code_version}"; do
     http_status="$(curl -fsIL -o /dev/null -w '%{http_code}' "${url}")"
     case "${http_status}" in
         200|302) ;;

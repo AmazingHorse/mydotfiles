@@ -1,0 +1,55 @@
+{{ if eq .chezmoi.os "linux" -}}
+#!/usr/bin/env bash
+set -euo pipefail
+
+fp_version='{{ .packages.friend_programmer }}'
+fp_tag="v${fp_version}"
+fp_ssh_repo="git@github.com:AmazingHorse/friend-programmer.git"
+fp_https_repo="https://github.com/AmazingHorse/friend-programmer.git"
+fp_dir="${HOME}/.local/share/friend-programmer"
+stamp_file="${HOME}/.local/share/fp/.installed-version"
+guard_entry="${HOME}/.omp/agent/extensions/command-guard/index.ts"
+
+# Fast path (<1ms, zero network): skip when pinned version is already installed.
+if [[ -f "${stamp_file}" && -f "${guard_entry}" ]]; then
+    installed_version="$(tr -d '[:space:]' < "${stamp_file}" 2>/dev/null || true)"
+    if [[ "${installed_version}" == "${fp_version}" ]]; then
+        exit 0
+    fi
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+    echo "Warning: git not found; skipping friend-programmer ${fp_tag} install." >&2
+    exit 0
+fi
+
+fp_ssh_cmd="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
+if [[ ! -d "${fp_dir}/.git" ]]; then
+    rm -rf "${fp_dir}"
+    mkdir -p "$(dirname "${fp_dir}")"
+    if ! GIT_SSH_COMMAND="${fp_ssh_cmd}" git -c advice.detachedHead=false clone --quiet --depth 1 --branch "${fp_tag}" "${fp_ssh_repo}" "${fp_dir}" 2>/dev/null &&
+        ! GIT_TERMINAL_PROMPT=0 git -c advice.detachedHead=false clone --quiet --depth 1 --branch "${fp_tag}" "${fp_https_repo}" "${fp_dir}" 2>/dev/null; then
+        rm -rf "${fp_dir}"
+        echo "Note: friend-programmer ${fp_tag} pending GitHub auth — run 'setup-ssh.sh --gh' then 'chezmoi apply'." >&2
+        exit 0
+    fi
+else
+    if ! GIT_SSH_COMMAND="${fp_ssh_cmd}" GIT_TERMINAL_PROMPT=0 git -C "${fp_dir}" fetch --quiet --depth 1 origin "refs/tags/${fp_tag}:refs/tags/${fp_tag}" 2>/dev/null; then
+        echo "Warning: could not fetch ${fp_tag} from origin; checking local tag cache." >&2
+    fi
+    if ! git -C "${fp_dir}" -c advice.detachedHead=false checkout --quiet --detach --force "refs/tags/${fp_tag}" 2>/dev/null; then
+        echo "Note: friend-programmer ${fp_tag} pending GitHub auth — run 'setup-ssh.sh --gh' then 'chezmoi apply'." >&2
+        exit 0
+    fi
+fi
+
+if [[ ! -f "${fp_dir}/install.sh" ]]; then
+    echo "Warning: install.sh missing in ${fp_dir}; skipping friend-programmer install." >&2
+    exit 0
+fi
+
+bash "${fp_dir}/install.sh" --only guard
+mkdir -p "$(dirname "${stamp_file}")"
+printf '%s\n' "${fp_version}" > "${stamp_file}"
+{{ end -}}

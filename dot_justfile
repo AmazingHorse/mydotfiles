@@ -411,7 +411,7 @@ doctor:
     report_value OLLAMA_HOST "${OLLAMA_HOST:-"(unset)"}"
     report_value AGENT_HOME "${AGENT_HOME:-$agent_home}"
     printf '\nactive stack:\n'
-    for binary in omp agy just rg bun node wt; do
+    for binary in omp t3 agy just rg bun node wt; do
         if binary_path="$(command -v "$binary" 2>/dev/null)"; then
             report_value "$binary" "$binary_path"
         else
@@ -444,10 +444,21 @@ doctor:
         report_value "approvalMode" "missing or not write"
     fi
     command_guard="$agent_home/agent/extensions/command-guard/index.ts"
-    if [[ -f "$command_guard" ]]; then
-        report_value "command-guard" "present"
+    fp_stamp="$HOME/.local/share/fp/.installed-version"
+    if [[ -f "$command_guard" && -f "$fp_stamp" ]]; then
+        fp_installed_ver="$(tr -d '[:space:]' < "$fp_stamp" 2>/dev/null || echo "unknown")"
+        report_value "command-guard" "present (friend-programmer $fp_installed_ver)"
+    elif [[ -f "$command_guard" ]]; then
+        report_value "command-guard" "present (legacy/unmanaged)"
     else
-        report_value "command-guard" "missing"
+        report_value "command-guard" "pending (run setup-ssh.sh --gh then chezmoi apply)"
+    fi
+    fp_flags_file="${XDG_CONFIG_HOME:-$HOME/.config}/fp/flags.env"
+    if [[ -f "$HOME/.local/bin/fp-flags.sh" && -f "$fp_flags_file" ]]; then
+        fp_hash="$(bash -c '. "$HOME/.local/bin/fp-flags.sh" && fp_load_flags && fp_flags_hash' 2>/dev/null || echo "unknown")"
+        report_value "fp flags" "present (hash: $fp_hash)"
+    else
+        report_value "fp flags" "pending (run setup-ssh.sh --gh then chezmoi apply)"
     fi
     seeds_dir="$agent_home/seeds"
     if [[ ! -d "$seeds_dir" ]]; then

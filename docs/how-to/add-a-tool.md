@@ -28,9 +28,15 @@ If the tool belongs to an optional profile or toolset (e.g. `infra` or `containe
 {{ end -}}
 ```
 
-## 4. Run verification
+## 4. Check Renovate grouping tier
+Review `.github/renovate.json`:
+- Low-risk leaf CLIs need no config change — their `minor`/`patch` bumps join the weekly `cli-tools-non-major` batch automatically (and `major` bumps stay isolated).
+- High-blast-radius bootstrap, prompt, or agent harness tools (e.g. `chezmoi`, `mise`, `oh-my-posh`, `omp`, `t3`, `friend-programmer`) should be added to the isolated `matchPackageNames` rule so each bump opens its own PR.
+- If the tool has a direct download or npm URL tested in `scripts/ci-check.sh`, add its pin and reachability check there too.
+
+## 5. Run verification
 Run local CI checks:
 ```bash
 just test
 ```
-If the tool renders cleanly in `mise-config.toml`, test passes!
+If the tool renders cleanly in `mise-config.toml` and passes reachability checks, test passes!

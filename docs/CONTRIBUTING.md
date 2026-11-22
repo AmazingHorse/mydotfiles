@@ -16,7 +16,7 @@ Examples:
 
 ## How to Add a Tool
 
-1. Add the tool pin to `.chezmoidata.toml` with Renovate annotation:
+1. Add the tool pin to `.chezmoidata.toml` with a Renovate annotation:
    ```toml
    # renovate: datasource=github-releases depName=owner/repo
    tool_name = "1.2.3"
@@ -25,10 +25,22 @@ Examples:
    ```toml
    "aqua:owner/repo" = "{{ .packages.tool_name }}"
    ```
-3. Run verification:
+3. Classify the tool's Renovate tier in `.github/renovate.json`:
+   - Low-risk leaf CLIs require no extra rule — they join the weekly `cli-tools-non-major` PR automatically.
+   - High-blast-radius bootstrap, prompt, or agent harness tools (like `chezmoi`, `mise`, `oh-my-posh`, `omp`, `t3`, `friend-programmer`) should be added to the isolated `matchPackageNames` rule so every bump gets its own PR.
+4. Run verification:
    ```bash
    just test
    ```
+
+## Version & Dependency Update Process
+
+- **Supply-chain gate:** Renovate enforces `minimumReleaseAge: "7 days"` with `internalChecksFilter: "strict"` and `automerge: false` — no release enters a PR until it has aged 7 days, and every bump is human-audited.
+- **Tiered weekly PRs (Monday before 06:00):**
+  - Low-risk `minor`/`patch` CLI updates amalgamate into a single weekly `cli-tools-non-major` PR.
+  - All `major` updates and all high-blast-radius bootstrap/prompt/agent harness updates open as individual PRs for clean changelog review and independent revertability.
+- **Pre-merge audit:** PRs that modify `.chezmoidata.toml` or `scripts/bootstrap.sh` automatically run live download reachability checks (`CI_SKIP_NETWORK=0`) in GitHub Actions CI before merge.
+- **Restore points:** After auditing, merging, and verifying with `just apply` on a host, tag clean milestones with annotated calver tags (`vYYYY.MM.N`, e.g. `v2026.11.1`).
 
 ## Pull Request Process
 1. Verify all tests pass locally: `just test`.

@@ -179,29 +179,55 @@ function Update-KnownEditorSettings {
         'VSCodium'
     )
 
+    $managedSettingsPath = Join-Path $PSScriptRoot 'editor-settings.json'
+    $managedSettings = $null
+    if (Test-Path -LiteralPath $managedSettingsPath) {
+        try {
+            $managedSettings = Get-Content -LiteralPath $managedSettingsPath -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            Write-Warning "Could not parse shared editor settings at '$managedSettingsPath': $($_.Exception.Message)"
+        }
+    }
+
     foreach ($editor in $knownEditors) {
-        $settingsPath = Join-Path $AppDataDirectory (Join-Path $editor 'User\settings.json')
-        if (-not (Test-Path -LiteralPath $settingsPath)) {
+        $editorDir = Join-Path $AppDataDirectory $editor
+        if (-not (Test-Path -LiteralPath $editorDir)) {
+            continue
+        }
+
+        $userDir = Join-Path $editorDir 'User'
+        $settingsPath = Join-Path $userDir 'settings.json'
+        $fileExists = Test-Path -LiteralPath $settingsPath
+        if (-not $fileExists -and $null -eq $managedSettings) {
             continue
         }
 
         try {
-            $raw = Get-Content -LiteralPath $settingsPath -Raw -ErrorAction Stop
-            if ([string]::IsNullOrWhiteSpace($raw)) {
-                continue
+            $settings = [pscustomobject]@{}
+            if ($fileExists) {
+                $raw = Get-Content -LiteralPath $settingsPath -Raw -ErrorAction Stop
+                if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                    # Avoid stripping comments on rewrite if settings.json contains comments
+                    if ($raw -match '(?m)^\s*//' -or $raw -match '/\*') {
+                        Write-Warning "Editor settings for $editor at '$settingsPath' contains comments; skipping automated rewrite to prevent comment loss. Please configure editor settings manually."
+                        continue
+                    }
+                    $settings = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+                }
             }
 
-            # Avoid stripping comments on rewrite if settings.json contains comments
-            if ($raw -match '(?m)^\s*//' -or $raw -match '/\*') {
-                Write-Warning "Editor settings for $editor at '$settingsPath' contains comments; skipping automated rewrite to prevent comment loss. Please configure editor fonts manually."
-                continue
+            if ($null -ne $managedSettings) {
+                foreach ($prop in $managedSettings.PSObject.Properties) {
+                    $settings | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value -Force
+                }
             }
-
-            $settings = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
             $settings | Add-Member -NotePropertyName 'terminal.integrated.fontFamily' -NotePropertyValue $TargetFontFamily -Force
 
             $jsonContent = $settings | ConvertTo-Json -Depth 32
-            if ($PSCmdlet.ShouldProcess($settingsPath, "Update $editor font settings")) {
+            if ($PSCmdlet.ShouldProcess($settingsPath, "Update $editor settings")) {
+                if (-not (Test-Path -LiteralPath $userDir)) {
+                    New-Item -ItemType Directory -Force -Path $userDir | Out-Null
+                }
                 [System.IO.File]::WriteAllText($settingsPath, $jsonContent + [Environment]::NewLine, $utf8NoBom)
             }
         } catch {
