@@ -343,7 +343,12 @@ function Invoke-WtAgentEpilogue {
         switch -Regex ($Reply) {
             '^[rR]$' {
                 $NewName = Read-Host '    New branch name'
-                if ($NewName -and (git branch -m $NewName 2>$null; $LASTEXITCODE -eq 0)) {
+                $Renamed = $false
+                if ($NewName) {
+                    git branch -m $NewName 2>$null
+                    $Renamed = ($LASTEXITCODE -eq 0)
+                }
+                if ($Renamed) {
                     $OldSafe = $CurBranch -replace '/', '_'
                     $NewSafe = $NewName -replace '/', '_'
                     $OldNote = Join-Path $GitCommon "agent-bus/$OldSafe.md"
