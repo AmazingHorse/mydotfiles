@@ -108,6 +108,11 @@ Cross-platform SSH key helper and ssh-copy-id shim.
   --gh                    Upload public key via `gh ssh-key add`
   --gl                    Upload public key via `glab ssh-key add`
   --copy <host>           Alternative syntax for target host(s)
+
+Deploying to a host also writes/updates a Host entry in
+~/.ssh/config.d/setup-ssh.conf (User/Port/IdentityFile) so later ssh logins
+reuse this key. ConnectTimeout is set to 10s so unreachable hosts fail fast
+instead of hanging.
 EOF
             exit 0
             ;;
@@ -187,6 +192,67 @@ else
     key_title="${host_label}-${key_basename}-${date_label}"
 fi
 
+ensure_config_d_include() {
+    # config.d entries only apply if ~/.ssh/config includes the directory.
+    # On hosts where the managed config was never applied, wire it up here.
+    local ssh_config_path="${ssh_directory}/config"
+    if [ -f "${ssh_config_path}" ]; then
+        if tr -d '\r' < "${ssh_config_path}" | grep -Eq '^[[:space:]]*Include[[:space:]].*config\.d(/|\*|[[:space:]]|$)'; then
+            return 0
+        fi
+        local tmp_config
+        tmp_config="$(mktemp)"
+        {
+            printf 'Include config.d/*.conf\n\n'
+            cat "${ssh_config_path}"
+        } > "${tmp_config}"
+        cat "${tmp_config}" > "${ssh_config_path}"
+        rm -f "${tmp_config}"
+        chmod 600 "${ssh_config_path}"
+        echo "Added 'Include config.d/*.conf' to ${ssh_config_path}"
+    else
+        mkdir -p "${ssh_directory}"
+        chmod 700 "${ssh_directory}" 2>/dev/null || true
+        printf 'Include config.d/*.conf\n' > "${ssh_config_path}"
+        chmod 600 "${ssh_config_path}"
+        echo "Created ${ssh_config_path} with config.d include."
+    fi
+}
+
+ensure_ssh_config_entry() {
+    # Persist a Host block so future `ssh <host>` uses this key (and port).
+    local target="$1"
+    local host_part="${target##*@}"
+    local user_part=""
+    case "${target}" in
+        *@*) user_part="${target%%@*}" ;;
+    esac
+
+    local config_dir="${ssh_directory}/config.d"
+    local config_file="${config_dir}/setup-ssh.conf"
+    mkdir -p "${config_dir}"
+    chmod 700 "${config_dir}" 2>/dev/null || true
+
+    if [ -f "${config_file}" ] && grep -Eq "^[[:space:]]*Host[[:space:]]+${host_part}([[:space:]]|$)" "${config_file}"; then
+        echo "SSH config entry for ${host_part} already exists in ${config_file}"
+        return 0
+    fi
+
+    {
+        printf 'Host %s\n' "${host_part}"
+        if [ -n "${user_part}" ]; then
+            printf '    User %s\n' "${user_part}"
+        fi
+        if [ -n "${ssh_port}" ]; then
+            printf '    Port %s\n' "${ssh_port}"
+        fi
+        printf '    IdentityFile %s\n' "${private_key_path/#${HOME}/~}"
+        printf '    IdentitiesOnly yes\n\n'
+    } >> "${config_file}"
+    chmod 600 "${config_file}"
+    echo "Added SSH config entry for ${host_part} to ${config_file}"
+}
+
 install_public_key_on_host() {
     local target_host="$1"
     local public_key_contents
@@ -197,14 +263,18 @@ install_public_key_on_host() {
         port_args=("-p" "${ssh_port}")
     fi
 
+    # ConnectTimeout keeps unreachable hosts from hanging; accept-new auto-trusts
+    # first-seen host keys so deployment doesn't stall on a yes/no prompt.
+    local ssh_opts=("-o" "ConnectTimeout=10" "-o" "StrictHostKeyChecking=accept-new")
+
     if command -v ssh-copy-id >/dev/null 2>&1; then
-        ssh-copy-id ${port_args[@]+"${port_args[@]}"} -i "${public_key_path}" "${target_host}"
+        ssh-copy-id ${port_args[@]+"${port_args[@]}"} "${ssh_opts[@]}" -i "${public_key_path}" "${target_host}"
         return
     fi
 
     # Portable fallback for hosts without ssh-copy-id (common on Windows/minimal images).
     # shellcheck disable=SC2029
-    ssh ${port_args[@]+"${port_args[@]}"} "${target_host}" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF '${public_key_contents}' ~/.ssh/authorized_keys || printf '%s\n' '${public_key_contents}' >> ~/.ssh/authorized_keys"
+    ssh ${port_args[@]+"${port_args[@]}"} "${ssh_opts[@]}" "${target_host}" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF '${public_key_contents}' ~/.ssh/authorized_keys || printf '%s\n' '${public_key_contents}' >> ~/.ssh/authorized_keys"
 }
 
 if [ "${upload_with_gh}" -eq 1 ]; then
@@ -233,9 +303,14 @@ if [ "${upload_with_gl}" -eq 1 ]; then
     echo "Uploaded public key to GitLab as ${key_title}"
 fi
 
+if [ "${#copy_targets[@]}" -gt 0 ]; then
+    ensure_config_d_include
+fi
+
 for copy_target in "${copy_targets[@]+"${copy_targets[@]}"}"; do
     echo "Installing public key on ${copy_target}..."
     install_public_key_on_host "${copy_target}"
+    ensure_ssh_config_entry "${copy_target}"
     echo "Installed public key on ${copy_target}"
 done
 
