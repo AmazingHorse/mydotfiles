@@ -448,11 +448,10 @@ if (Test-Path -LiteralPath $TerminalConfigScript) {
 }
 
 if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Ensure-WingetPackagePresent -PackageId 'GitHub.cli'
     Ensure-WingetPackagePresent -PackageId 'junegunn.fzf'
     Ensure-WingetPackagePresent -PackageId 'jqlang.jq'
 } else {
-    Write-Warning 'winget not found; install GitHub CLI / fzf / Tier-1 CLIs manually if needed.'
+    Write-Warning 'winget not found; install fzf / Tier-1 CLIs manually if needed.'
 }
 
 if (Get-Command pip -ErrorAction SilentlyContinue) {

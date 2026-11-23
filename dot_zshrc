@@ -1,5 +1,11 @@
 # Managed zshrc: primary interactive shell on Linux/WSL.
 
+# Soft-guard: only zsh can parse this file (setopt, autoload, glob qualifiers).
+# `source ~/.zshrc` in bash/sh silently returns instead of spewing errors.
+if [ -z "${ZSH_VERSION:-}" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 if [ -f "$HOME/.config/shell/path.sh" ]; then
     # shellcheck source=/dev/null
     . "$HOME/.config/shell/path.sh"
