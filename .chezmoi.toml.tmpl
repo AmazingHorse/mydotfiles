@@ -16,7 +16,9 @@
 {{-   $gitName = promptStringOnce . "gitName" "Git name" -}}
 {{-   $gitEmail = promptStringOnce . "gitEmail" "Git email" -}}
 {{- end -}}
+{{- $isLinux := eq .chezmoi.os "linux" -}}
 {{- $toolsets := get . "toolsets" | default dict -}}
+{{- $workstationToolsets := and $isLinux (eq $profile "workstation") (not $isEphemeral) -}}
 {{- $toolsetInfra := false -}}
 {{- $toolsetContainers := false -}}
 {{- $toolsetRust := false -}}
@@ -24,15 +26,15 @@
 {{-   $toolsetInfra = get $toolsets "infra" -}}
 {{- else if hasKey . "toolset_infra" -}}
 {{-   $toolsetInfra = get . "toolset_infra" -}}
-{{- else if and (eq $profile "workstation") (not $isEphemeral) -}}
-{{-   $toolsetInfra = promptBoolOnce $toolsets "infra" "Infra tools (tofu/ansible/kubectl)" false -}}
+{{- else if $workstationToolsets -}}
+{{-   $toolsetInfra = promptBoolOnce $toolsets "infra" "Infra tools (tofu/ansible/kubectl)" true -}}
 {{- end -}}
 {{- if hasKey $toolsets "containers" -}}
 {{-   $toolsetContainers = get $toolsets "containers" -}}
 {{- else if hasKey . "toolset_containers" -}}
 {{-   $toolsetContainers = get . "toolset_containers" -}}
-{{- else if and (eq $profile "workstation") (not $isEphemeral) -}}
-{{-   $toolsetContainers = promptBoolOnce $toolsets "containers" "Container tools (podman/docker/hadolint)" false -}}
+{{- else if $workstationToolsets -}}
+{{-   $toolsetContainers = promptBoolOnce $toolsets "containers" "Container tools (podman/docker/hadolint)" true -}}
 {{- end -}}
 {{- if hasKey $toolsets "rust" -}}
 {{-   $toolsetRust = get $toolsets "rust" -}}
@@ -40,6 +42,10 @@
 {{-   $toolsetRust = get . "toolset_rust" -}}
 {{- else if and (eq $profile "workstation") (not $isEphemeral) -}}
 {{-   $toolsetRust = promptBoolOnce $toolsets "rust" "Rust toolchain" false -}}
+{{- end -}}
+{{- if not $isLinux -}}
+{{-   $toolsetInfra = false -}}
+{{-   $toolsetContainers = false -}}
 {{- end -}}
 
 umask = 0o022

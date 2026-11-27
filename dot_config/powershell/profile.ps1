@@ -28,16 +28,10 @@ if ($ResolvedPythonScripts -and (Test-Path -LiteralPath $ResolvedPythonScripts))
 }
 
 function Resolve-PreferredEditorCommand {
-    $WaitCapableEditors = @(
-        @{ Name = 'cursor'; Arguments = @('--wait') }
-        @{ Name = 'antigravity'; Arguments = @('--wait') }
-        @{ Name = 'agy'; Arguments = @('--wait') }
-        @{ Name = 'code'; Arguments = @('--wait') }
-    )
-    foreach ($EditorCandidate in $WaitCapableEditors) {
-        if (Get-Command $EditorCandidate.Name -ErrorAction SilentlyContinue) {
-            return $EditorCandidate
-        }
+    # PREFERRED_EDITOR (command + args) overrides the pinned nvim, e.g. 'code --wait'
+    if ($env:PREFERRED_EDITOR) {
+        $Parts = $env:PREFERRED_EDITOR -split '\s+'
+        return @{ Name = $Parts[0]; Arguments = @($Parts | Select-Object -Skip 1) }
     }
 
     foreach ($TerminalEditorName in @('nvim', 'vim', 'vi')) {

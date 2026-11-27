@@ -23,7 +23,8 @@ Tool versions & runtimes (mise)
   mise exec -- <cmd>          run with project tool versions
   Global pins: python, node, bun, omp, copier, rg, fd, delta, zoxide,
                just, uv, yq, fnox, rbw (Linux) / bw (Win), betterleaks
-  Optional toolsets (.chezmoidata.toml): infra (tofu, kubectl), containers (helm), rust
+  Toolsets (Linux only, default on for workstation): infra (tofu, kubectl, aws),
+               containers (hadolint), rust — per-machine ~/.config/chezmoi/chezmoi.toml
   Profiles: workstation (default), server (no AI tools), ephemeral (containers)
 
 Repo task runner (just) — from mydotfiles checkout
@@ -117,7 +118,7 @@ Git (delta pager is automatic)
   gsw / gco                  fzf branch → switch / checkout
 
 Editor / pager
-  $EDITOR   preferred-editor (Cursor → Antigravity → VS Code → nvim/vim/vi)
+  $EDITOR   preferred-editor → pinned nvim (vim/vi/nano fallback; PREFERRED_EDITOR overrides)
   PAGER     less -FRX when available
 
 SSH

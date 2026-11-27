@@ -9,9 +9,11 @@
 # Default machine profile: "workstation" (default), "server", or "ephemeral"
 profile = "workstation"
 
+# Toolset defaults for the workstation profile. Linux-only: init writes
+# per-machine [data.toolsets] overrides (forced off on other OSes).
 [toolsets]
-infra = false
-containers = false
+infra = true
+containers = true
 rust = false
 
 [features]
@@ -61,6 +63,8 @@ git_delta = "0.19.2"
 worktrunk = "0.81.0"
 # renovate: datasource=github-releases depName=cli/cli
 gh = "2.104.0"
+# renovate: datasource=github-releases depName=neovim/neovim
+neovim = "0.12.6"
 # Preferred Git across platforms (Windows winget + newer Ubuntu PPAs).
 # Ubuntu 20.04's git-core PPA currently tops out around 2.50.x, so Linux
 # accepts the newest PPA build that still meets git_minimum (zdiff3 floor).
@@ -84,6 +88,9 @@ k9s = "0.40.5"
 sops = "3.9.4"
 # renovate: datasource=github-releases depName=FiloSottile/age
 age = "1.2.1"
+# aws-cli publishes tags only (no GitHub releases); binaries come from AWS.
+# renovate: datasource=github-tags depName=aws/aws-cli
+awscli = "2.42.4"
 # renovate: datasource=github-releases depName=hadolint/hadolint
 hadolint = "2.12.0"
 

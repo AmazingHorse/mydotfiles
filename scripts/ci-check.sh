@@ -145,9 +145,32 @@ for mise_tool in \
     'aqua:astral-sh/uv' \
     'aqua:mikefarah/yq' \
     'github:doy/rbw' \
+    'aqua:neovim/neovim' \
     'pipx:copier'; do
     if ! grep -q "${mise_tool}" "${rendered_mise_config}"; then
         echo "dot_config/mise/config.toml.tmpl does not render ${mise_tool}" >&2
+        exit 1
+    fi
+done
+
+echo "==> Verify toolsets render on Linux only"
+linux_mise_config="${render_directory}/mise-config-linux.toml"
+chezmoi execute-template --file --source="${repository_root}" \
+    --override-data "${native_linux_override}" \
+    "${repository_root}/dot_config/mise/config.toml.tmpl" > "${linux_mise_config}"
+for mise_tool in 'aqua:aws/aws-cli' 'aqua:hadolint/hadolint' 'aqua:helm/helm'; do
+    if ! grep -q "${mise_tool}" "${linux_mise_config}"; then
+        echo "Linux mise config does not render ${mise_tool}" >&2
+        exit 1
+    fi
+done
+windows_mise_config="${render_directory}/mise-config-windows.toml"
+chezmoi execute-template --file --source="${repository_root}" \
+    --override-data "${windows_override}" \
+    "${repository_root}/dot_config/mise/config.toml.tmpl" > "${windows_mise_config}"
+for mise_tool in 'aqua:aws/aws-cli' 'aqua:hadolint/hadolint' 'aqua:helm/helm'; do
+    if grep -q "${mise_tool}" "${windows_mise_config}"; then
+        echo "Windows mise config unexpectedly renders ${mise_tool}" >&2
         exit 1
     fi
 done

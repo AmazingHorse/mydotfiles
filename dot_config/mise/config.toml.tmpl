@@ -21,6 +21,7 @@ bun = "{{ .packages.bun }}"
 "aqua:betterleaks/betterleaks" = "{{ .packages.betterleaks }}"
 "aqua:max-sixty/worktrunk" = "{{ .packages.worktrunk }}"
 "aqua:cli/cli" = "{{ .packages.gh }}"
+"aqua:neovim/neovim" = "{{ .packages.neovim }}"
 
 # AI tooling (omitted on server profile)
 {{ if ne .profile "server" -}}
@@ -28,16 +29,17 @@ bun = "{{ .packages.bun }}"
 "pipx:copier" = "{{ .packages.copier }}"
 {{ end -}}
 
-# Optional toolsets
-{{ if .toolsets.infra -}}
+# Optional toolsets (Linux only; aqua lacks Windows support for these)
+{{ if and .toolsets.infra (eq .chezmoi.os "linux") -}}
 "aqua:opentofu/opentofu" = "{{ .packages.opentofu }}"
 "aqua:kubernetes/kubectl" = "{{ .packages.kubectl }}"
 "aqua:helm/helm" = "{{ .packages.helm }}"
 "aqua:derailed/k9s" = "{{ .packages.k9s }}"
 "aqua:getsops/sops" = "{{ .packages.sops }}"
 "aqua:FiloSottile/age" = "{{ .packages.age }}"
+"aqua:aws/aws-cli" = "{{ .packages.awscli }}"
 {{ end -}}
-{{ if .toolsets.containers -}}
+{{ if and .toolsets.containers (eq .chezmoi.os "linux") -}}
 "aqua:hadolint/hadolint" = "{{ .packages.hadolint }}"
 {{ end -}}
 {{ if .toolsets.rust -}}

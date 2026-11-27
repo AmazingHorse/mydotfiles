@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
-# Pick the first available GUI/terminal editor and wait for it (Git-friendly).
+# Pick an editor: PREFERRED_EDITOR (command + optional args) wins, then the
+# pinned nvim, then whatever terminal editor the base OS ships. GUI editors
+# are intentionally out of the chain — WSL interop shims go stale and are
+# slow to boot. Opt back in per-machine with PREFERRED_EDITOR='code --wait'.
 set -euo pipefail
 
-try_wait_editor() {
-    local command_name="$1"
-    shift
-
-    if ! command -v "${command_name}" >/dev/null 2>&1; then
-        return 1
+if [ -n "${PREFERRED_EDITOR:-}" ]; then
+    read -r -a preferred_editor <<< "${PREFERRED_EDITOR}"
+    if command -v "${preferred_editor[0]}" >/dev/null 2>&1; then
+        exec "${preferred_editor[@]}" "$@"
     fi
+    printf 'preferred-editor: %s not found; falling back\n' "${preferred_editor[0]}" >&2
+fi
 
-    exec "${command_name}" "$@"
-}
-
-try_wait_editor cursor --wait "$@"
-try_wait_editor antigravity --wait "$@"
-try_wait_editor agy --wait "$@"
-try_wait_editor code --wait "$@"
-try_wait_editor nvim "$@"
-try_wait_editor vim "$@"
-try_wait_editor vi "$@"
+for editor in nvim vim vi nano; do
+    if command -v "${editor}" >/dev/null 2>&1; then
+        exec "${editor}" "$@"
+    fi
+done
 
 printf 'preferred-editor: no supported editor found on PATH\n' >&2
 exit 1
